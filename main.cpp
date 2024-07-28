@@ -24,27 +24,28 @@ template <class F> deferrer<F> operator*(defer_dummy, F f) { return {f}; }
 #define defer auto DEFER(__LINE__) = defer_dummy{} *[&]()
 
 struct Note {
-	uint64_t timestamp;
+	uint64_t timestamp; // in milliseconds
 	//uint32_t hold_duration;
-	uint32_t columns; // the nth bit is set if the nth column is used
+	uint32_t columns; // a bitmask; the nth bit is set if the nth column is used
 };
 
 class Chart {
-//struct Chart { // temporary public everything
 	std::vector<Note> notes;
-	//std::vector<bool> hits; // equal in length to notes
-	SDL_Rect note_bounds;
+	SDL_Rect note_bounds; // .x and .y are changed to draw notes; .w and .h are not
 	int column_height;
-	unsigned note_index;
-	int total_columns;
+	unsigned note_index; // keep track of what note to start drawing from
+	int total_columns; // the number of note columns in the chart
 
 	// file signature
 	static const uint64_t magic = 0xF1E0007472616863;
 	static const uint64_t version = 0;
 
 public:
+	// calling the constructor does not make a Chart ready to use.
+	// you must call deserialize next
 	Chart(int col_height, int note_width, int note_height);
 
+	// on success this function returns 0 and this Chart is safe to use
 	int deserialize(std::istream &);
 
 	//int serialize(std::ostream &);
@@ -98,7 +99,7 @@ int Chart::deserialize(std::istream &is) {
 			READ(is, &n.columns, sizeof(n.columns));
 			if (n.columns == 0)
 				return -1;
-			int max_column = 8 * sizeof(uint32_t) - std::countl_zero<uint32_t>(n.columns);
+			int max_column = 8 * sizeof(uint32_t) - std::countl_zero<uint32_t>(n.columns); // index of the last 1 in n.columns
 			if (max_column > total_columns)
 				total_columns = max_column;
 			notes[i] = n;
@@ -117,6 +118,7 @@ void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) 
 		if (notes[i].timestamp < t0) {
 			if (notes[i].columns)
 				std::cout << "miss!\n";
+			// we can do this because notes are kept ordered by time
 			note_index++; // next time, don't bother with this note
 		} else {
 			for (int j = 0; j < total_columns; j++) {
@@ -196,7 +198,7 @@ int main(int argc, char **argv) {
 	}
 	defer { SDL_DestroyRenderer(ren); };
 
-	// not really an texture atlas yet
+	// not really an texture atlas yet, since we only have 1 texture :(
 	// I'll probably make a class Atlas
 	SDL_Texture *atlas = IMG_LoadTexture(ren, ASSETS("note.png"));
 	if (!atlas) {
@@ -205,9 +207,9 @@ int main(int argc, char **argv) {
 	}
 	defer { SDL_DestroyTexture(atlas); };
 
-	uint64_t strike_timespan = 300;
-	uint64_t display_timespan = 750;
-	uint64_t min_delay_per_frame = 5;
+	uint64_t strike_timespan = 300; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
+	uint64_t display_timespan = 750; // notes at the top of the screen will be display_timespan ms in the future
+	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
 	uint64_t start_chart = SDL_GetTicks64();
 	while (1) {
 		uint64_t start_frame = SDL_GetTicks64();
