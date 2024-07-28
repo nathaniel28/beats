@@ -23,8 +23,8 @@ struct Note {
 	uint32_t columns; // the nth bit is set if the nth column is used
 };
 
-//class Chart {
-struct Chart { // temporary public everything
+class Chart {
+//struct Chart { // temporary public everything
 	std::vector<Note> notes;
 	//std::vector<bool> hits; // equal in length to notes
 	SDL_Rect note_bounds;
@@ -102,23 +102,25 @@ int Chart::deserialize(std::istream &is) {
 
 void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) {
 	unsigned i = note_index;
+	std::cerr << t0 << ' ' << t1 << ' ' << i << '\n';
 	unsigned max = notes.size();
 	while (i < max && notes[i].timestamp < t1) {
 		if (notes[i].timestamp < t0) {
 			note_index++; // next time, don't bother with this note
-			continue;
-		}
-		for (int j = 0; j < total_columns; j++) {
-			if ((notes[i].columns >> j) & 1) {
-				note_bounds.x = note_bounds.w * j;
-				// there's gotta be a better way than messing
-				// with int to float to int conversions
-				float norm = static_cast<float>(notes[i].timestamp - t0) / static_cast<float>(t1 - t0);
-				note_bounds.y = static_cast<int>(column_height * norm);
-				//SDL_RenderCopy(ren, tex, NULL, &note_bounds);
-				std::cerr << note_bounds.w << ' ' << note_bounds.h << ' ' << note_bounds.x << ' ' << note_bounds.y << '\n';
+		} else {
+			for (int j = 0; j < total_columns; j++) {
+				if ((notes[i].columns >> j) & 1) {
+					note_bounds.x = note_bounds.w * j;
+					// there's gotta be a better way than messing
+					// with int to float to int conversions
+					float norm = static_cast<float>(notes[i].timestamp - t0) / static_cast<float>(t1 - t0);
+					note_bounds.y = static_cast<int>(column_height * norm);
+					SDL_RenderCopy(ren, tex, NULL, &note_bounds);
+					//std::cerr << note_bounds.w << ' ' << note_bounds.h << ' ' << note_bounds.x << ' ' << note_bounds.y << '\n';
+				}
 			}
 		}
+		i++;
 	}
 }
 
@@ -150,11 +152,13 @@ int main() {
 		return -1;
 	}
 
+	/*
 	for (const auto &n : ch.notes) {
 		std::cout << n.timestamp << ' ' << n.columns << '\n';
 	}
-	std::cout << ch.total_columns << '\n';
-/*
+	return 0;
+	*/
+
 	int err = SDL_Init(SDL_INIT_VIDEO);
 	if (err != 0) {
 		LOG_ERR();
@@ -190,6 +194,8 @@ int main() {
 	while (1) {
 		uint64_t start_frame = SDL_GetTicks64();
 
+		//std::cerr << start_frame << '\n';
+
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
 			switch (ev.type) {
@@ -199,7 +205,7 @@ int main() {
 		}
 
 		SDL_RenderClear(ren);
-		uint64_t song_offset = start_chart - start_frame;
+		uint64_t song_offset = start_frame - start_chart;
 		ch.draw(ren, atlas, song_offset, song_offset + 1000);
 		SDL_RenderPresent(ren);
 
@@ -207,6 +213,5 @@ int main() {
 		if (elapsed < min_delay_per_frame)
 			SDL_Delay(min_delay_per_frame - elapsed);
 	}
-*/
 	return 0;
 }
