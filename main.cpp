@@ -115,6 +115,8 @@ void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) 
 	unsigned max = notes.size();
 	while (i < max && notes[i].timestamp < t1) {
 		if (notes[i].timestamp < t0) {
+			if (notes[i].columns)
+				std::cout << "miss!\n";
 			note_index++; // next time, don't bother with this note
 		} else {
 			for (int j = 0; j < total_columns; j++) {
@@ -152,9 +154,17 @@ int Chart::height() {
 
 #define ASSETS(a) "./assets/" a
 
-int main() {
+int main(int argc, char **argv) {
+	if (argc != 2) {
+		const char *name = argv[0]; // the last element of argv is null
+		if (!name)
+			name = "beats";
+		std::cout << "Usage: " << name << " [chart file]\n";
+		return 1;
+	}
+
 	std::fstream in;
-	in.open("charts/ba.chart");
+	in.open(argv[1]);
 	if (!in.is_open()) {
 		std::cout << "failed to open file\n";
 		return -1;
