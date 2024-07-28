@@ -1,3 +1,5 @@
+# under GPL-2.0
+
 import ctypes
 import json
 import sys

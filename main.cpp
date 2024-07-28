@@ -1,3 +1,5 @@
+// under GPL-2.0
+
 #include <bit>
 #include <cstdint>
 #include <fstream>
@@ -26,15 +28,15 @@ template <class F> deferrer<F> operator*(defer_dummy, F f) { return {f}; }
 struct Note {
 	uint64_t timestamp; // in milliseconds
 	//uint32_t hold_duration;
-	uint32_t columns; // a bitmask; the nth bit is set if the nth column is used
+	uint32_t columns; // a bitmask; the nth bit is set if the nth column is used, as the player hits this note, the column is set to 0
 };
 
 class Chart {
 	std::vector<Note> notes;
 	SDL_Rect note_bounds; // .x and .y are changed to draw notes; .w and .h are not
 	int column_height;
-	unsigned note_index; // keep track of what note to start drawing from
 	int total_columns; // the number of note columns in the chart
+	unsigned note_index; // keep track of what note to start drawing from
 
 	// file signature
 	static const uint64_t magic = 0xF1E0007472616863;
@@ -46,16 +48,20 @@ public:
 	Chart(int col_height, int note_width, int note_height);
 
 	// on success this function returns 0 and this Chart is safe to use
+	// calls istream::exceptions
 	int deserialize(std::istream &);
 
 	//int serialize(std::ostream &);
 
-	// draw the notes from t0 to t1
+	// draw the notes from t0 to t1, also updates note_index
+	// future calls should be made with a greater t0 and t1
 	void draw(SDL_Renderer *, SDL_Texture *, uint64_t t0, uint64_t t1);
 
-	// where column is the offset of the column to look for notes in, and
-	// threshhold is how far in the future to search
-	Note *next_note(int column, uint64_t threshhold);
+	// returns the closest *unpressed* note and the absolute time difference
+	// between time and that note's timestamp, where column is the offset of
+	// the column to look for notes in, and threshhold is how far in the
+	// past/future to search
+	std::pair<Note *, uint64_t> close_note(int column, uint64_t time, uint64_t threshhold);
 
 	int width();
 
@@ -93,9 +99,13 @@ int Chart::deserialize(std::istream &is) {
 			return -1;
 		READ(is, &tmp.u_32, sizeof(tmp.u_32));
 		notes.resize(tmp.u_32);
+		uint64_t last_timestamp = 0;
 		for (unsigned i = 0; i < tmp.u_32; i++) {
 			Note n;
 			READ(is, &n.timestamp, sizeof(n.timestamp));
+			if (n.timestamp < last_timestamp)
+				return -1;
+			last_timestamp = n.timestamp;
 			READ(is, &n.columns, sizeof(n.columns));
 			if (n.columns == 0)
 				return -1;
@@ -116,8 +126,9 @@ void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) 
 	unsigned max = notes.size();
 	while (i < max && notes[i].timestamp < t1) {
 		if (notes[i].timestamp < t0) {
-			if (notes[i].columns)
-				std::cout << "miss!\n";
+			if (notes[i].columns) {
+				//std::cout << "miss!\n";
+			}
 			// we can do this because notes are kept ordered by time
 			note_index++; // next time, don't bother with this note
 		} else {
@@ -133,15 +144,30 @@ void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) 
 	}
 }
 
-Note *Chart::next_note(int column, uint64_t threshhold) {
+std::pair<Note *, uint64_t> Chart::close_note(int column, uint64_t time, uint64_t threshhold) {
 	unsigned i = note_index;
 	unsigned max = notes.size();
-	while (i < max && notes[i].timestamp < threshhold) {
-		if (notes[i].columns & column)
-			return &notes[i];
+	Note *upper = nullptr;
+	uint64_t upper_delta_t = 0;
+	while (i < max && notes[i].timestamp < time + threshhold) {
+		if (notes[i].columns & column) {
+			upper = &notes[i];
+			upper_delta_t = upper->timestamp - time;
+			break;
+		}
 		i++;
 	}
-	return nullptr;
+	i = note_index;
+	while (i > 0 && notes[i].timestamp > time - threshhold) {
+		if (notes[i].columns & column) {
+			uint64_t lower_delta_t = time - notes[i].timestamp;
+			if (!upper || upper_delta_t > lower_delta_t)
+				return {&notes[i], lower_delta_t};
+			break;
+		}
+		i--;
+	}
+	return {upper, upper_delta_t}; // possibly {nullptr, 0}
 }
 
 int Chart::width() {
@@ -207,22 +233,52 @@ int main(int argc, char **argv) {
 	}
 	defer { SDL_DestroyTexture(atlas); };
 
-	uint64_t strike_timespan = 300; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
-	uint64_t display_timespan = 750; // notes at the top of the screen will be display_timespan ms in the future
-	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
+	// "The audio device frequency is specified in Hz;"
+	// "in modern times, 48000 is often a reasonable default." -SDL2_mixer wiki
+	err = Mix_OpenAudio(48000, AUDIO_F32SYS, 2, 4096);
+	if (err != 0) {
+		std::cerr << "failed to initialize audio\n";
+		return -1;
+	}
+	defer { Mix_CloseAudio(); };
+
+	char *c = argv[1];
+	while (*c) {
+		if (*c == '.') {
+			*c = '\0';
+			break;
+		}
+		c++;
+	}
+	Mix_Music *track = Mix_LoadMUS(argv[1]);
+	if (!track) {
+		LOG_ERR();
+		return -1;
+	}
+	defer { Mix_FreeMusic(track); };
+
+	const uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
+	const uint64_t display_timespan = 750; // notes at the top of the screen will be display_timespan ms in the future
+	const uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
+	int64_t audio_offset = -210;
+
+	Mix_PlayMusic(track, 0);
+
 	uint64_t start_chart = SDL_GetTicks64();
 	while (1) {
 		uint64_t start_frame = SDL_GetTicks64();
-		uint64_t song_offset = start_frame - start_chart;
+		uint64_t song_offset = start_frame - start_chart + audio_offset;
 
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
 			if (ev.type == SDL_KEYDOWN) {
 				int col = 0;
 				switch (ev.key.keysym.sym) {
+				case SDLK_g:
 				case SDLK_d:
 					col = 1;
 					break;
+				case SDLK_h:
 				case SDLK_f:
 					col = 2;
 					break;
@@ -234,10 +290,17 @@ int main(int argc, char **argv) {
 					break;
 				}
 				if (col) {
-					Note *found = ch.next_note(col, song_offset + strike_timespan);
+					auto [found, delta] = ch.close_note(col, song_offset, strike_timespan);
 					if (found) {
-						std::cout << strike_timespan - (found->timestamp - song_offset) << '\n';
-						found->columns ^= col;
+						uint64_t score = strike_timespan - delta;
+						/*
+						if (score > strike_timespan)
+							std::cout << "??? ";
+						else if (score > strike_timespan - strike_timespan / 8)
+							std::cout << "perfect ";
+						*/
+						std::cout << score << '\n';
+						found->columns ^= col; // remove the note from its column to prevent it from being pressable and drawn
 					} else {
 						std::cout << "strike!\n";
 					}
