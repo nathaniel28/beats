@@ -6,6 +6,7 @@
 
 // https://github.com/libSDL2pp/libSDL2pp-tutorial/blob/master/lesson00.cc
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
 
 // see https://stackoverflow.com/questions/32432450
 // thank you pmttavara!
@@ -23,7 +24,6 @@ struct Note {
 };
 
 class Chart {
-public: // temporary everything public
 	std::vector<Note> notes;
 	//std::vector<bool> hits; // equal in length to notes
 	SDL_Rect note_bounds;
@@ -128,22 +128,21 @@ uint64_t Chart::next_note_offset(int column, uint64_t threshhold) {
 
 #define LOG_ERR() std::cerr << SDL_GetError() << '\n'
 
+#define ASSETS(a) "./assets/" a
+
 int main() {
-	// temporary stuff
 	std::fstream in;
-	in.open("ba.chart");
-	if (!in.is_open())
-		return 2;
+	in.open("charts/ba.chart");
+	if (!in.is_open()) {
+		std::cout << "failed to open file\n";
+		return -1;
+	}
 	Chart ch(800, 80, 20);
-	if (!ch.deserialize(in)) {
-		for (const auto &n : ch.notes) {
-			std::cout << n.timestamp << ' ' << n.columns << '\n';
-		}
+	if (ch.deserialize(in)) {
+		std::cout << "failed to deserialize file\n";
+		return -1;
 	}
 
-	return 0; // temporary
-
-	/*
 	int err = SDL_Init(SDL_INIT_VIDEO);
 	if (err != 0) {
 		LOG_ERR();
@@ -165,19 +164,28 @@ int main() {
 	}
 	defer { SDL_DestroyRenderer(ren); };
 
+	// not really an texture atlas yet
+	// I'll probably make a class Atlas
+	SDL_Texture *atlas = IMG_LoadTexture(ren, ASSETS("note.png"));
+	if (!atlas) {
+		std::cerr << "failed to load texture " ASSETS("note.png") "\n";
+		return -1;
+	}
+	defer { SDL_DestroyTexture(atlas); };
+
 	uint64_t min_delay_per_frame = 10;
 	while (1) {
 		uint64_t start_frame = SDL_GetTicks64();
 
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
-			std::cout << ev.type << '\n';
 			switch (ev.type) {
 			case SDL_QUIT:
 				return 0;
 			}
 		}
 		SDL_RenderClear(ren);
+		SDL_RenderCopy(ren, atlas, NULL, NULL);
 		SDL_RenderPresent(ren);
 
 		uint64_t elapsed = SDL_GetTicks64() - start_frame;
@@ -186,5 +194,4 @@ int main() {
 	}
 
 	return 0;
-	*/
 }
