@@ -1,4 +1,4 @@
-//#include <bit>
+#include <bit>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -23,7 +23,8 @@ struct Note {
 	uint32_t columns; // the nth bit is set if the nth column is used
 };
 
-class Chart {
+//class Chart {
+struct Chart { // temporary public everything
 	std::vector<Note> notes;
 	//std::vector<bool> hits; // equal in length to notes
 	SDL_Rect note_bounds;
@@ -55,6 +56,8 @@ Chart::Chart(int col_height, int note_width, int note_height) : notes(0) {
 	column_height = static_cast<float>(col_height); // we need a float later
 	note_bounds.w = note_width;
 	note_bounds.h = note_height;
+	note_index = 0;
+	total_columns = 0;
 }
 
 #define READ(stream, dat, sz) stream.read(reinterpret_cast<char *>(dat), sz)
@@ -86,6 +89,9 @@ int Chart::deserialize(std::istream &is) {
 			READ(is, &n.columns, sizeof(n.columns));
 			if (n.columns == 0)
 				return -1;
+			int max_column = 8 * sizeof(uint32_t) - std::countl_zero<uint32_t>(n.columns);
+			if (max_column > total_columns)
+				total_columns = max_column;
 			notes[i] = n;
 		}
 	} catch (const std::ios_base::failure &err) {
@@ -109,7 +115,8 @@ void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) 
 				// with int to float to int conversions
 				float norm = static_cast<float>(notes[i].timestamp - t0) / static_cast<float>(t1 - t0);
 				note_bounds.y = static_cast<int>(column_height * norm);
-				SDL_RenderCopy(ren, tex, NULL, &note_bounds);
+				//SDL_RenderCopy(ren, tex, NULL, &note_bounds);
+				std::cerr << note_bounds.w << ' ' << note_bounds.h << ' ' << note_bounds.x << ' ' << note_bounds.y << '\n';
 			}
 		}
 	}
@@ -137,12 +144,17 @@ int main() {
 		std::cout << "failed to open file\n";
 		return -1;
 	}
-	Chart ch(800, 80, 20);
+	Chart ch(600, 100, 20);
 	if (ch.deserialize(in)) {
 		std::cout << "failed to deserialize file\n";
 		return -1;
 	}
 
+	for (const auto &n : ch.notes) {
+		std::cout << n.timestamp << ' ' << n.columns << '\n';
+	}
+	std::cout << ch.total_columns << '\n';
+/*
 	int err = SDL_Init(SDL_INIT_VIDEO);
 	if (err != 0) {
 		LOG_ERR();
@@ -150,7 +162,7 @@ int main() {
 	}
 	defer { SDL_Quit(); };
 
-	SDL_Window *win = SDL_CreateWindow("test title", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480, 0);
+	SDL_Window *win = SDL_CreateWindow("beats", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 600, 800, 0);
 	if (!win) {
 		LOG_ERR();
 		return -1;
@@ -174,6 +186,7 @@ int main() {
 	defer { SDL_DestroyTexture(atlas); };
 
 	uint64_t min_delay_per_frame = 10;
+	uint64_t start_chart = SDL_GetTicks64();
 	while (1) {
 		uint64_t start_frame = SDL_GetTicks64();
 
@@ -184,14 +197,16 @@ int main() {
 				return 0;
 			}
 		}
+
 		SDL_RenderClear(ren);
-		SDL_RenderCopy(ren, atlas, NULL, NULL);
+		uint64_t song_offset = start_chart - start_frame;
+		ch.draw(ren, atlas, song_offset, song_offset + 1000);
 		SDL_RenderPresent(ren);
 
 		uint64_t elapsed = SDL_GetTicks64() - start_frame;
 		if (elapsed < min_delay_per_frame)
 			SDL_Delay(min_delay_per_frame - elapsed);
 	}
-
+*/
 	return 0;
 }
