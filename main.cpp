@@ -137,7 +137,7 @@ Note *Chart::next_note(int column, uint64_t threshhold) {
 			return &notes[i];
 		i++;
 	}
-	return nullptr; // as unsigned
+	return nullptr;
 }
 
 int Chart::width() {
