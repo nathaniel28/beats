@@ -30,7 +30,7 @@ class Chart {
 	std::vector<Note> notes;
 	//std::vector<bool> hits; // equal in length to notes
 	SDL_Rect note_bounds;
-	float column_height;
+	int column_height;
 	unsigned note_index;
 	int total_columns;
 
@@ -55,7 +55,7 @@ public:
 };
 
 Chart::Chart(int col_height, int note_width, int note_height) : notes(0) {
-	column_height = static_cast<float>(col_height + note_height); // we need a float later
+	column_height = col_height;
 	note_bounds.w = note_width;
 	note_bounds.h = note_height;
 	note_index = 0;
@@ -113,12 +113,8 @@ void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) 
 			for (int j = 0; j < total_columns; j++) {
 				if ((notes[i].columns >> j) & 1) {
 					note_bounds.x = note_bounds.w * j;
-					// there's gotta be a better way than messing
-					// with int to float to int conversions
-					float norm = static_cast<float>(notes[i].timestamp - t0) / static_cast<float>(t1 - t0);
-					note_bounds.y = column_height - static_cast<int>(column_height * norm) - note_bounds.h;
+					note_bounds.y = column_height - ((column_height * (notes[i].timestamp - t0)) / (t1 - t0)) - note_bounds.h;
 					SDL_RenderCopy(ren, tex, NULL, &note_bounds);
-					//std::cerr << note_bounds.w << ' ' << note_bounds.h << ' ' << note_bounds.x << ' ' << note_bounds.y << '\n';
 				}
 			}
 		}
@@ -208,7 +204,7 @@ int main() {
 
 		SDL_RenderClear(ren);
 		uint64_t song_offset = start_frame - start_chart;
-		ch.draw(ren, atlas, song_offset, song_offset + 7500);
+		ch.draw(ren, atlas, song_offset, song_offset + 750);
 		SDL_RenderPresent(ren);
 
 		uint64_t elapsed = SDL_GetTicks64() - start_frame;
