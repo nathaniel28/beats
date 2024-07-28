@@ -55,7 +55,7 @@ public:
 };
 
 Chart::Chart(int col_height, int note_width, int note_height) : notes(0) {
-	column_height = col_height;
+	column_height = col_height + note_height;
 	note_bounds.w = note_width;
 	note_bounds.h = note_height;
 	note_index = 0;
@@ -204,7 +204,7 @@ int main() {
 
 		SDL_RenderClear(ren);
 		uint64_t song_offset = start_frame - start_chart;
-		ch.draw(ren, atlas, song_offset, song_offset + 750);
+		ch.draw(ren, atlas, song_offset, song_offset + 7500);
 		SDL_RenderPresent(ren);
 
 		uint64_t elapsed = SDL_GetTicks64() - start_frame;
