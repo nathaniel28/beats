@@ -6,6 +6,10 @@
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_mixer.h>
+
+// gonna need to wrap in OpenGL and freetype for font rendering...
+// https://github.com/rougier/freetype-gl/tree/master/demos
 
 // sdl resource:
 // https://github.com/libSDL2pp/libSDL2pp-tutorial/blob/master/lesson00.cc
@@ -50,8 +54,11 @@ public:
 
 	// where column is the offset of the column to look for notes in, and
 	// threshhold is how far in the future to search
-	uint64_t next_note_offset(int column, uint64_t threshhold);
+	Note *next_note(int column, uint64_t threshhold);
 
+	int width();
+
+	int height();
 };
 
 Chart::Chart(int col_height, int note_width, int note_height) : notes(0) {
@@ -114,7 +121,7 @@ void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) 
 				if ((notes[i].columns >> j) & 1) {
 					note_bounds.x = note_bounds.w * j;
 					note_bounds.y = column_height - ((column_height * (notes[i].timestamp - t0)) / (t1 - t0)) - note_bounds.h;
-					SDL_RenderCopy(ren, tex, NULL, &note_bounds);
+					SDL_RenderCopy(ren, tex, nullptr, &note_bounds);
 				}
 			}
 		}
@@ -122,15 +129,23 @@ void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) 
 	}
 }
 
-uint64_t Chart::next_note_offset(int column, uint64_t threshhold) {
+Note *Chart::next_note(int column, uint64_t threshhold) {
 	unsigned i = note_index;
 	unsigned max = notes.size();
 	while (i < max && notes[i].timestamp < threshhold) {
 		if (notes[i].columns & column)
-			return notes[i].timestamp;
+			return &notes[i];
 		i++;
 	}
-	return -1; // as unsigned
+	return nullptr; // as unsigned
+}
+
+int Chart::width() {
+	return total_columns * note_bounds.w;
+}
+
+int Chart::height() {
+	return column_height - note_bounds.h;
 }
 
 #define LOG_ERR() std::cerr << SDL_GetError() << '\n'
@@ -150,21 +165,14 @@ int main() {
 		return -1;
 	}
 
-	/*
-	for (const auto &n : ch.notes) {
-		std::cout << n.timestamp << ' ' << n.columns << '\n';
-	}
-	return 0;
-	*/
-
-	int err = SDL_Init(SDL_INIT_VIDEO);
+	int err = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
 	if (err != 0) {
 		LOG_ERR();
 		return -1;
 	}
 	defer { SDL_Quit(); };
 
-	SDL_Window *win = SDL_CreateWindow("beats", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 400, 600, 0);
+	SDL_Window *win = SDL_CreateWindow("beats", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, ch.width(), ch.height(), 0);
 	if (!win) {
 		LOG_ERR();
 		return -1;
@@ -187,24 +195,48 @@ int main() {
 	}
 	defer { SDL_DestroyTexture(atlas); };
 
+	uint64_t strike_timespan = 300;
+	uint64_t display_timespan = 750;
 	uint64_t min_delay_per_frame = 5;
 	uint64_t start_chart = SDL_GetTicks64();
 	while (1) {
 		uint64_t start_frame = SDL_GetTicks64();
-
-		//std::cerr << start_frame << '\n';
+		uint64_t song_offset = start_frame - start_chart;
 
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
-			switch (ev.type) {
-			case SDL_QUIT:
+			if (ev.type == SDL_KEYDOWN) {
+				int col = 0;
+				switch (ev.key.keysym.sym) {
+				case SDLK_d:
+					col = 1;
+					break;
+				case SDLK_f:
+					col = 2;
+					break;
+				case SDLK_j:
+					col = 4;
+					break;
+				case SDLK_k:
+					col = 8;
+					break;
+				}
+				if (col) {
+					Note *found = ch.next_note(col, song_offset + strike_timespan);
+					if (found) {
+						std::cout << strike_timespan - (found->timestamp - song_offset) << '\n';
+						found->columns ^= col;
+					} else {
+						std::cout << "strike!\n";
+					}
+				}
+			} else if (ev.type == SDL_QUIT) {
 				return 0;
 			}
 		}
 
 		SDL_RenderClear(ren);
-		uint64_t song_offset = start_frame - start_chart;
-		ch.draw(ren, atlas, song_offset, song_offset + 7500);
+		ch.draw(ren, atlas, song_offset, song_offset + display_timespan);
 		SDL_RenderPresent(ren);
 
 		uint64_t elapsed = SDL_GetTicks64() - start_frame;
