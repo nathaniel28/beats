@@ -4,9 +4,11 @@
 #include <iostream>
 #include <vector>
 
-// https://github.com/libSDL2pp/libSDL2pp-tutorial/blob/master/lesson00.cc
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+
+// sdl resource:
+// https://github.com/libSDL2pp/libSDL2pp-tutorial/blob/master/lesson00.cc
 
 // see https://stackoverflow.com/questions/32432450
 // thank you pmttavara!
@@ -53,7 +55,7 @@ public:
 };
 
 Chart::Chart(int col_height, int note_width, int note_height) : notes(0) {
-	column_height = static_cast<float>(col_height); // we need a float later
+	column_height = static_cast<float>(col_height + note_height); // we need a float later
 	note_bounds.w = note_width;
 	note_bounds.h = note_height;
 	note_index = 0;
@@ -102,7 +104,7 @@ int Chart::deserialize(std::istream &is) {
 
 void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) {
 	unsigned i = note_index;
-	std::cerr << t0 << ' ' << t1 << ' ' << i << '\n';
+	//std::cerr << t0 << ' ' << t1 << ' ' << i << '\n';
 	unsigned max = notes.size();
 	while (i < max && notes[i].timestamp < t1) {
 		if (notes[i].timestamp < t0) {
@@ -114,7 +116,7 @@ void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) 
 					// there's gotta be a better way than messing
 					// with int to float to int conversions
 					float norm = static_cast<float>(notes[i].timestamp - t0) / static_cast<float>(t1 - t0);
-					note_bounds.y = static_cast<int>(column_height * norm);
+					note_bounds.y = column_height - static_cast<int>(column_height * norm) - note_bounds.h;
 					SDL_RenderCopy(ren, tex, NULL, &note_bounds);
 					//std::cerr << note_bounds.w << ' ' << note_bounds.h << ' ' << note_bounds.x << ' ' << note_bounds.y << '\n';
 				}
@@ -166,7 +168,7 @@ int main() {
 	}
 	defer { SDL_Quit(); };
 
-	SDL_Window *win = SDL_CreateWindow("beats", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 600, 800, 0);
+	SDL_Window *win = SDL_CreateWindow("beats", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 400, 600, 0);
 	if (!win) {
 		LOG_ERR();
 		return -1;
@@ -189,7 +191,7 @@ int main() {
 	}
 	defer { SDL_DestroyTexture(atlas); };
 
-	uint64_t min_delay_per_frame = 10;
+	uint64_t min_delay_per_frame = 5;
 	uint64_t start_chart = SDL_GetTicks64();
 	while (1) {
 		uint64_t start_frame = SDL_GetTicks64();
@@ -206,7 +208,7 @@ int main() {
 
 		SDL_RenderClear(ren);
 		uint64_t song_offset = start_frame - start_chart;
-		ch.draw(ren, atlas, song_offset, song_offset + 1000);
+		ch.draw(ren, atlas, song_offset, song_offset + 7500);
 		SDL_RenderPresent(ren);
 
 		uint64_t elapsed = SDL_GetTicks64() - start_frame;
