@@ -178,9 +178,29 @@ int Chart::height() {
 	return column_height - note_bounds.h;
 }
 
+struct KeyStates {
+	int data[SDL_NUM_SCANCODES];
+	bool pressed[SDL_NUM_SCANCODES];
+
+	KeyStates() = default; // RAII, those arrays are initialized!
+
+	// sets the scancode to change and returns the previous value (true if the key is held)
+	bool set(int scancode, bool change);
+};
+
+bool KeyStates::set(int scancode, bool change) {
+	if (scancode >= SDL_NUM_SCANCODES)
+		return false;
+	bool res = pressed[scancode];
+	pressed[scancode] = change;
+	return res;
+}
+
 #define LOG_ERR() std::cerr << SDL_GetError() << '\n'
 
 #define ASSETS(a) "./assets/" a
+
+#define COLUMN(n) (1 << n)
 
 int main(int argc, char **argv) {
 	if (argc != 2) {
@@ -257,11 +277,18 @@ int main(int argc, char **argv) {
 	}
 	defer { Mix_FreeMusic(track); };
 
+	KeyStates ks;
+	ks.data[SDL_SCANCODE_D] = COLUMN(0);
+	ks.data[SDL_SCANCODE_F] = COLUMN(1);
+	ks.data[SDL_SCANCODE_J] = COLUMN(2);
+	ks.data[SDL_SCANCODE_K] = COLUMN(3);
+
 	const uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
 	const uint64_t display_timespan = 750; // notes at the top of the screen will be display_timespan ms in the future
 	const uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
-	int64_t audio_offset = -210;
+	int64_t audio_offset = -230;
 
+	SDL_RaiseWindow(win);
 	Mix_PlayMusic(track, 0);
 
 	uint64_t start_chart = SDL_GetTicks64();
@@ -271,25 +298,14 @@ int main(int argc, char **argv) {
 
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
-			if (ev.type == SDL_KEYDOWN) {
-				int col = 0;
-				switch (ev.key.keysym.sym) {
-				case SDLK_g:
-				case SDLK_d:
-					col = 1;
-					break;
-				case SDLK_h:
-				case SDLK_f:
-					col = 2;
-					break;
-				case SDLK_j:
-					col = 4;
-					break;
-				case SDLK_k:
-					col = 8;
-					break;
-				}
-				if (col) {
+			switch (ev.type) {
+			case SDL_KEYDOWN:
+			{
+				// I need a new scope here because C++ throws a fit if you
+				// declare variables after a label without one
+				bool is_held = ks.set(ev.key.keysym.scancode, true);
+				int col = ks.data[ev.key.keysym.scancode];
+				if (!is_held && col) {
 					auto [found, delta] = ch.close_note(col, song_offset, strike_timespan);
 					if (found) {
 						uint64_t score = strike_timespan - delta;
@@ -305,7 +321,12 @@ int main(int argc, char **argv) {
 						std::cout << "strike!\n";
 					}
 				}
-			} else if (ev.type == SDL_QUIT) {
+				break;
+			}
+			case SDL_KEYUP:
+				ks.set(ev.key.keysym.scancode, false);
+				break;
+			case SDL_QUIT:
 				return 0;
 			}
 		}

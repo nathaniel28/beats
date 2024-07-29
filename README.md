@@ -2,14 +2,13 @@
 Beats is a rhythm game similar to Rhythm Plus. It's not done yet!
 ## Stuff that still needs to be done
 * Hold notes!
-* Keep track of button presses and releases to detect holding a key
-* Fix the obnoxious bug where pressing a key once rarely consumes two notes (accomplishing the above may be the solution)
+* Fix the bug in converter.py where pressing a key once consumes two notes if it was a hold note in the JSON encoding
 * Text rendering for score and such (more complicated than I though, via freetype)
 * A pause menu to change note scroll speed, and audio/note offset, song selection...
-* Non hardcoded keybindings
 * Support for more file formats
 * Charts and the accompanying music are kept in different files; I need a better method of finding the music given a chart as the current solution is just looking for foo given the chart foo.chart
 ## Stuff that has been done
+* Keybindings are modifiable, but the current values are hardcoded
 * Sound (some file formats are unsupported, like m4a; this is a limitation of SDL2\_mixer, so I may at some point move to an ffmpeg-based solution)
 * The class Chart supports up to 32 columns of notes (though the UI doesn't yet)
 * The speed at which notes fall can be adjusted (though the value is hardcoded)
