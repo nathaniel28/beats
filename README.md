@@ -1,3 +1,5 @@
+# THIS BRANCH IS FOR TESTING RAW OPENGL STUFF
+Unfortunately, it didn't lead anywhere because the author is too stupid to understand the great OpenGL state machine. Verdict: use SDL\_gpu instead.
 # Beats
 Beats is a rhythm game similar to Rhythm Plus. It's not done yet!
 ## Stuff that still needs to be done
