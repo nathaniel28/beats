@@ -7,14 +7,16 @@
 #include <vector>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
+//#include <SDL2/SDL_image.h>
 #include <SDL2/SDL_mixer.h>
+#include <GL/glew.h>
+#include <GL/gl.h>
 
 // gonna need to wrap in OpenGL and freetype for font rendering...
 // https://github.com/rougier/freetype-gl/tree/master/demos
 
 // sdl resource:
-// https://github.com/libSDL2pp/libSDL2pp-tutorial/blob/master/lesson00.cc
+// https://sibras.github.io/OpenGL4-Tutorials/docs/Tutorials/01-Tutorial1
 
 // see https://stackoverflow.com/questions/32432450
 // thank you pmttavara!
@@ -25,10 +27,12 @@ template <class F> deferrer<F> operator*(defer_dummy, F f) { return {f}; }
 #define DEFER(LINE) DEFER_(LINE)
 #define defer auto DEFER(__LINE__) = defer_dummy{} *[&]()
 
+#define MAX_NOTES_PER_FRAME 512
+
 struct Note {
 	uint64_t timestamp; // in milliseconds
 	//uint32_t hold_duration;
-	uint32_t columns; // a bitmask; the nth bit is set if the nth column is used, as the player hits this note, the column is set to 0
+	uint32_t columns; // a bitmask; the nth bit is set if the nth column is used, as the player hits a present column, the column is xor'd away, leaving the others columns untouched
 };
 
 class Chart {
@@ -202,6 +206,26 @@ bool KeyStates::set(int scancode, bool change) {
 
 #define COLUMN(n) (1 << n)
 
+GLuint load_shader(GLenum type, const GLchar *src, GLint len) {
+	GLuint shader = glCreateShader(type);
+	if (!shader)
+		return 0;
+	const char *const srcs[] = { src };
+	glShaderSource(shader, 1, srcs, &len);
+	glCompileShader(shader);
+	GLint status;
+	glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+	if (status != GL_TRUE) {
+		GLchar log[256];
+		GLsizei log_len;
+		glGetShaderInfoLog(shader, sizeof(log), &log_len, log);
+		std::cout.write(log, log_len) << '\n';
+		glDeleteShader(shader);
+		return 0;
+	}
+	return shader;
+}
+
 int main(int argc, char **argv) {
 	if (argc != 2) {
 		const char *name = argv[0]; // the last element of argv is null
@@ -230,20 +254,122 @@ int main(int argc, char **argv) {
 	}
 	defer { SDL_Quit(); };
 
-	SDL_Window *win = SDL_CreateWindow("beats", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, ch.width(), ch.height(), 0);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+
+	SDL_Window *win = SDL_CreateWindow("beats", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, ch.width(), ch.height(), SDL_WINDOW_OPENGL);
 	if (!win) {
 		LOG_ERR();
 		return -1;
 	}
 	defer { SDL_DestroyWindow(win); };
 
+	SDL_GLContext gl_ctx = SDL_GL_CreateContext(win);
+	if (!gl_ctx) {
+		LOG_ERR();
+		return -1;
+	}
+	defer { SDL_GL_DeleteContext(gl_ctx); };
+
+	/*
 	SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
 	if (!ren) {
 		LOG_ERR();
 		return -1;
 	}
 	defer { SDL_DestroyRenderer(ren); };
+	*/
 
+	// TODO: move the following to a init OpenGL function of some kind
+	GLenum gerr = glewInit(); // must be called after create context
+	if (gerr != GLEW_OK) {
+		std::cout << "failed to initialize GLEW: " << glewGetErrorString(gerr) << '\n';
+		return -1;
+	}
+	glViewport(0, 0, ch.width(), ch.height());
+	glClearColor(0.0, 0.0, 0.0, 1.0);
+
+	// TODO: move the following shader related stuff to another file
+	// all other shaders should live there too
+	const char vtx_pix2uv_src[] =
+	"#version 460 core\n"
+	"uniform vec2 ssize = vec2(100, 600);\n" // tmp
+	"layout(location = 0) in ivec2 ppos;\n"
+	"void main() {\n"
+	"	vec2 uv = (2 * ppos) / ssize;\n"
+	"	uv = vec2(uv.x - 1.0, 1.0 - uv.y);\n"
+	"	gl_Position = vec4(uv, 0.0, 1.0);\n"
+	"}";
+	GLuint vtx_pix2uv = load_shader(GL_VERTEX_SHADER, vtx_pix2uv_src, sizeof(vtx_pix2uv_src));
+	if (!vtx_pix2uv)
+		return -1;
+	defer { glDeleteShader(vtx_pix2uv); };
+	const char frag_color_src[] =
+	"#version 460 core\n"
+	"out vec4 frag_col;\n"
+	"void main() {\n"
+	"	frag_col = vec4(0.3, 0.5, 0.9, 1.0);\n"
+	"}";
+	GLuint frag_color = load_shader(GL_FRAGMENT_SHADER, frag_color_src, sizeof(frag_color_src));
+	if (!frag_color)
+		return -1;
+	defer { glDeleteShader(frag_color); };
+	GLuint note_prog = glCreateProgram();
+	if (!note_prog)
+		return -1;
+	defer { glDeleteProgram(note_prog); }; // NOTE: these can be deleted after linking the program
+	glAttachShader(note_prog, vtx_pix2uv);
+	glAttachShader(note_prog, frag_color);
+	glLinkProgram(note_prog);
+	GLint status;
+	glGetProgramiv(note_prog, GL_LINK_STATUS, &status);
+	if (status != GL_TRUE) {
+		GLchar log[256];
+		GLsizei log_len;
+		glGetShaderInfoLog(note_prog, sizeof(log), &log_len, log);
+		std::cout.write(log, log_len) << '\n';
+		return -1;
+	}
+
+	GLuint vao;
+	glGenVertexArrays(1, &vao);
+	if (glGetError() != GL_NO_ERROR) {
+		std::cout << "failed to vertex array object\n";
+		return -1;
+	}
+	GLuint buffers[2];
+	glGenBuffers(sizeof(buffers) / sizeof(*buffers), buffers);
+	if (glGetError() != GL_NO_ERROR) {
+		std::cout << "failed to generate buffers\n";
+		return -1;
+	}
+	defer { glDeleteBuffers(sizeof(buffers) / sizeof(*buffers), buffers); };
+	const GLuint vbo = buffers[0];
+	const GLuint ebo = buffers[1];
+	glBindVertexArray(vao);
+	int32_t verts[] = {
+		20, 100,
+		30, 100,
+		20, 80,
+		30, 80,
+	};
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STREAM_DRAW);
+	uint32_t indices[] = {
+		0, 1, 2,
+		1, 2, 3,
+	};
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STREAM_DRAW);
+	glVertexAttribPointer(0, 3, GL_INT, GL_FALSE, 3 * sizeof(*verts), 0);
+	glEnableVertexAttribArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+
+	glClearColor(0.2, 0.3, 0.3, 1.0);
+
+	/*
 	// not really an texture atlas yet, since we only have 1 texture :(
 	// I'll probably make a class Atlas
 	SDL_Texture *atlas = IMG_LoadTexture(ren, ASSETS("note.png"));
@@ -252,6 +378,7 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 	defer { SDL_DestroyTexture(atlas); };
+	*/
 
 	// "The audio device frequency is specified in Hz;"
 	// "in modern times, 48000 is often a reasonable default." -SDL2_mixer wiki
@@ -263,13 +390,13 @@ int main(int argc, char **argv) {
 	defer { Mix_CloseAudio(); };
 
 	char *c = argv[1];
+	char *last_dot = c;
 	while (*c) {
-		if (*c == '.') {
-			*c = '\0';
-			break;
-		}
+		if (*c == '.')
+			last_dot = c;
 		c++;
 	}
+	*last_dot = '\0';
 	Mix_Music *track = Mix_LoadMUS(argv[1]);
 	if (!track) {
 		LOG_ERR();
@@ -286,7 +413,7 @@ int main(int argc, char **argv) {
 	const uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
 	const uint64_t display_timespan = 750; // notes at the top of the screen will be display_timespan ms in the future
 	const uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
-	int64_t audio_offset = -230;
+	int64_t audio_offset = -235;
 
 	SDL_RaiseWindow(win);
 	Mix_PlayMusic(track, 0);
@@ -331,9 +458,16 @@ int main(int argc, char **argv) {
 			}
 		}
 
+		glClear(GL_COLOR_BUFFER_BIT);
+		glUseProgram(note_prog);
+		glBindVertexArray(vao);
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		SDL_GL_SwapWindow(win);
+		/*
 		SDL_RenderClear(ren);
 		ch.draw(ren, atlas, song_offset, song_offset + display_timespan);
 		SDL_RenderPresent(ren);
+		*/
 
 		uint64_t elapsed = SDL_GetTicks64() - start_frame;
 		if (elapsed < min_delay_per_frame)

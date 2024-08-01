@@ -18,6 +18,6 @@ Beats is a rhythm game similar to Rhythm Plus. It's not done yet!
 ## Compiling
 Run `make`.
 
-You need development libraries for SDL, SDL\_image, and SDL\_mixer.
+You need development libraries for SDL, SDL\_image, SDL\_mixer, OpenGL, and GLEW.
 
-You will probably need freetype and OpenGL in the future.
+You will probably need freetype in the future.
