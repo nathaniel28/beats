@@ -1,14 +1,14 @@
-# THIS BRANCH IS FOR TESTING RAW OPENGL STUFF
-Unfortunately, it didn't lead anywhere because the author is too stupid to understand the great OpenGL state machine. Verdict: use SDL\_gpu instead.
 # Beats
 Beats is a rhythm game similar to Rhythm Plus. It's not done yet!
 ## Stuff that still needs to be done
 * Hold notes!
-* Fix the bug in converter.py where pressing a key once consumes two notes if it was a hold note in the JSON encoding
-* Text rendering for score and such (more complicated than I though, via freetype)
+* Fix the rare (but consistent) bug where pressing a key once consumes two notes
+* Text rendering for score and such (more complicated than I though, likely via freetype)
 * A pause menu to change note scroll speed, and audio/note offset, song selection...
-* Support for more file formats
+* Support for more audio file formats
 * Charts and the accompanying music are kept in different files; I need a better method of finding the music given a chart as the current solution is just looking for foo given the chart foo.chart
+* Textures for notes
+* A config file for keybindings etc.
 ## Stuff that has been done
 * Keybindings are modifiable, but the current values are hardcoded
 * Sound (some file formats are unsupported, like m4a; this is a limitation of SDL2\_mixer, so I may at some point move to an ffmpeg-based solution)
