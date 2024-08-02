@@ -7,7 +7,6 @@
 #include <vector>
 
 #include <SDL2/SDL.h>
-//#include <SDL2/SDL_image.h>
 #include <SDL2/SDL_mixer.h>
 #include <GL/glew.h>
 #include <GL/gl.h>
@@ -29,6 +28,8 @@ template <class F> deferrer<F> operator*(defer_dummy, F f) { return {f}; }
 
 // a point given a pixel coordinate on screen
 // we do rely on the fact that a point is 64 bits, and a vector<Point> is packed
+// (though I can't imagine a vector<Point> with each point consuming more or
+// less than 64 bits)
 struct Point {
 	int32_t x;
 	int32_t y;
@@ -136,7 +137,7 @@ int Chart::deserialize(std::istream &is) {
 
 void Chart::draw(uint64_t t0, uint64_t t1) {
 	points.clear(); // does not deallocate memory, though
-	indices.clear();
+	indices.clear(); // ditto
 	unsigned i = note_index;
 	//std::cerr << t0 << ' ' << t1 << ' ' << i << '\n';
 	unsigned max = notes.size();
@@ -152,7 +153,7 @@ void Chart::draw(uint64_t t0, uint64_t t1) {
 				if ((notes[i].columns >> j) & 1) {
 					const int32_t x0 = note_width * j;
 					const int32_t x1 = x0 + note_width;
-					const int32_t y1 = column_height - ((column_height * (notes[i].timestamp - t0)) / (t1 - t0));
+					const int32_t y1 = ((column_height * (notes[i].timestamp - t0)) / (t1 - t0));
 					const int32_t y0 = static_cast<int32_t>(note_height) < y1 ? y1 - note_height : 0;
 					const uint32_t sz = points.size();
 					indices.emplace(indices.end(), sz + 0);
@@ -296,15 +297,6 @@ int main(int argc, char **argv) {
 	}
 	defer { SDL_GL_DeleteContext(gl_ctx); };
 
-	/*
-	SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
-	if (!ren) {
-		LOG_ERR();
-		return -1;
-	}
-	defer { SDL_DestroyRenderer(ren); };
-	*/
-
 	// TODO: move the following to a init OpenGL function of some kind
 	GLenum gerr = glewInit(); // must be called after create context
 	if (gerr != GLEW_OK) {
@@ -319,6 +311,8 @@ int main(int argc, char **argv) {
 	//
 	// TODO: screen size is hardcoded, pass in as a uniform or find it out,
 	// without hardcoding it
+	// this shader converts pixel coordinates (as ints)
+	// to floats on the range [-1.0, 1.0]
 	const char vtx_shader_src[] =
 		"#version 460 core\n"
 		"layout (location = 0) in ivec2 pix;\n"
@@ -330,11 +324,12 @@ int main(int argc, char **argv) {
 	if (!vtx_shader)
 		return -1;
 	defer { glDeleteShader(vtx_shader); };
+	// TODO: note color is hardcoded! get a texture!
 	const char frag_color_src[] =
 		"#version 460 core\n"
 		"out vec4 frag_col;\n"
 		"void main() {\n"
-		"	frag_col = vec4(0.3, 0.5, 0.9, 1.0);\n"
+		"	frag_col = vec4(0.486, 0.729, 0.815, 1.0);\n"
 		"}";
 	GLuint frag_color = load_shader(GL_FRAGMENT_SHADER, frag_color_src, sizeof(frag_color_src));
 	if (!frag_color)
@@ -373,39 +368,9 @@ int main(int argc, char **argv) {
 	const GLuint vbo = buffers[0];
 	const GLuint ebo = buffers[1];
 
-	ch.draw(4500, 5000);
-	for (const auto &p : ch.points) {
-		std::cout << '(' << p.x << ", " << p.y << ")\n";
-	}
-	for (const auto &u : ch.indices) {
-		std::cout << u << ", ";
-	}
-	std::cout << '\n';
-
-	glBindVertexArray(vao);
-	glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(Point) * ch.points.size(), ch.points.data(), GL_DYNAMIC_DRAW);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * ch.indices.size(), ch.indices.data(), GL_DYNAMIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0); // why does GL_FLOAT work but GL_INT doesn't?
-	glEnableVertexAttribArray(0);
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(0);
-
-	/*
-	// not really an texture atlas yet, since we only have 1 texture :(
-	// I'll probably make a class Atlas
-	SDL_Texture *atlas = IMG_LoadTexture(ren, ASSETS("note.png"));
-	if (!atlas) {
-		std::cerr << "failed to load texture " ASSETS("note.png") "\n";
-		return -1;
-	}
-	defer { SDL_DestroyTexture(atlas); };
-	*/
-
 	// "The audio device frequency is specified in Hz;"
-	// "in modern times, 48000 is often a reasonable default." -SDL2_mixer wiki
+	// "in modern times, 48000 is often a reasonable default."
+	// -SDL2_mixer wiki
 	err = Mix_OpenAudio(48000, AUDIO_F32SYS, 2, 4096);
 	if (err != 0) {
 		std::cerr << "failed to initialize audio\n";
@@ -434,6 +399,7 @@ int main(int argc, char **argv) {
 	ks.data[SDL_SCANCODE_J] = COLUMN(2);
 	ks.data[SDL_SCANCODE_K] = COLUMN(3);
 
+	// the following 4 variables are times in milliseconds
 	const uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
 	const uint64_t display_timespan = 750; // notes at the top of the screen will be display_timespan ms in the future
 	const uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
@@ -483,16 +449,28 @@ int main(int argc, char **argv) {
 		}
 
 		glClear(GL_COLOR_BUFFER_BIT);
+
+		// ch.draw populates ch.points and ch.indices
+		ch.draw(song_offset, song_offset + display_timespan);
+		// now comes the OpenGL stuff I half understand
+		// TODO: can any of this be called only once?
+		// (before the render loop)
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(Point) * ch.points.size(), ch.points.data(), GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * ch.indices.size(), ch.indices.data(), GL_DYNAMIC_DRAW);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0); // why does GL_FLOAT work but GL_INT doesn't?
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindVertexArray(0);
+
+		// more magic happens here
 		glUseProgram(note_prog);
 		glBindVertexArray(vao);
 		glDrawElements(GL_TRIANGLES, ch.indices.size(), GL_UNSIGNED_INT, 0);
-		glBindVertexArray(0); // what's this for?
+		glBindVertexArray(0); // what's this for? resetting state?
 		SDL_GL_SwapWindow(win);
-		/*
-		SDL_RenderClear(ren);
-		ch.draw(ren, atlas, song_offset, song_offset + display_timespan);
-		SDL_RenderPresent(ren);
-		*/
 
 		uint64_t elapsed = SDL_GetTicks64() - start_frame;
 		if (elapsed < min_delay_per_frame)
