@@ -296,9 +296,9 @@ int main(int argc, char **argv) {
 	// these shader variable names don't make sense, sorry 
 	const char vtx_pix2uv_src[] =
 	"#version 460 core\n"
-	"layout (location = 0) in vec2 aPos;\n"
+	"layout (location = 0) in vec2 pix;\n"
 	"void main() {\n"
-	"	gl_Position = vec4(aPos, 0.0, 1.0);\n"
+	"	gl_Position = vec4(pix, 0.0, 1.0);\n"
 	"}";
 	GLuint vtx_pix2uv = load_shader(GL_VERTEX_SHADER, vtx_pix2uv_src, sizeof(vtx_pix2uv_src));
 	if (!vtx_pix2uv)
@@ -347,21 +347,21 @@ int main(int argc, char **argv) {
 	const GLuint vbo = buffers[0];
 	const GLuint ebo = buffers[1];
 	glBindVertexArray(vao);
-	float verts[] = {
-		 0.5f,  0.5f,
-		 0.5f, -0.5f,
-		-0.5f, -0.5f,
-		-0.5f,  0.5f,
+	uint32_t verts[] = {
+		0, 0,
+		0, 200,
+		300, 200,
+		300, 0,
 	};
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STREAM_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
 	uint32_t indices[] = {
-		0, 1, 3,
-		1, 2, 3,
+		0, 1, 2,
+		0, 2, 3,
 	};
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_DYNAMIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(*verts), 0);
+	glVertexAttribPointer(0, 2, GL_UNSIGNED_INT, GL_FALSE, 2 * sizeof(*verts), 0);
 	glEnableVertexAttribArray(0);
 
 	/*
