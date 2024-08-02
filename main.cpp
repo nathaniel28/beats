@@ -430,26 +430,30 @@ int main(int argc, char **argv) {
 				// declare variables after a label without one
 				bool is_held = ks.set(ev.key.keysym.scancode, true);
 				unsigned col = ks.data[ev.key.keysym.scancode];
-				if (col) {
-					unsigned col_index = std::countr_zero(col);
-					if (col_index < ch.last_press.size())
-						ch.last_press[col_index] = song_offset;
-					if (!is_held) {
-						auto [found, delta] = ch.close_note(col, song_offset, strike_timespan);
-						if (found) {
-							uint64_t score = strike_timespan - delta;
-							/*
-							if (score > strike_timespan)
-								std::cout << "??? ";
-							else if (score > strike_timespan - strike_timespan / 8)
-								std::cout << "perfect ";
-							*/
-							//std::cout << score << '\n';
-							found->columns ^= col; // remove the note from its column to prevent it from being pressable and drawn
-						} else {
-							//std::cout << "strike!\n";
-						}
-					}
+				if (!col)
+					break;
+				unsigned col_index = std::countr_zero(col);
+				if (col_index >= ch.last_press.size())
+					break;
+				ch.last_press[col_index] = song_offset;
+				if (is_held) // eventually, this will have code aside from break; so don't move it
+					break;
+				auto [found, delta] = ch.close_note(col, song_offset, strike_timespan);
+				if (found) {
+					uint64_t score = strike_timespan - delta;
+					// woah there buddy, that's too much indentation!
+					// try not being an idiot and moving some of this
+					// to a function (or a few!)
+					/*
+					if (score > strike_timespan)
+						std::cout << "??? ";
+					else if (score > strike_timespan - strike_timespan / 8)
+						std::cout << "perfect ";
+					*/
+					//std::cout << score << '\n';
+					found->columns ^= col; // remove the note from its column to prevent it from being pressable and drawn
+				} else {
+					//std::cout << "strike!\n";
 				}
 				break;
 			}
