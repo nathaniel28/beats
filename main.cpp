@@ -43,11 +43,11 @@ struct Note {
 
 class Chart {
 public:
-	std::vector<Point> points;
-	std::vector<uint32_t> indices;
+	std::vector<Point> points; // points of rectangles to draw notes
+	std::vector<uint64_t> last_press; // last press of a column, millisecond offset from song start
+	std::vector<uint32_t> indices; // indices for the EBO to help draw points
 private:
 	std::vector<Note> notes;
-	int total_columns; // the number of note columns in the chart
 	unsigned note_index; // keep track of what note to start drawing from
 	uint32_t column_height;
 	uint32_t note_width;
@@ -76,19 +76,20 @@ public:
 	// between time and that note's timestamp, where column is the offset of
 	// the column to look for notes in, and threshhold is how far in the
 	// past/future to search
-	std::pair<Note *, uint64_t> close_note(int column, uint64_t time, uint64_t threshhold);
+	std::pair<Note *, uint64_t> close_note(unsigned column, uint64_t time, uint64_t threshhold);
 
 	int width();
 
 	int height();
+
+	int total_columns();
 };
 
-Chart::Chart(uint32_t col_height, uint32_t note_width_, uint32_t note_height_) : points(512), indices(768), notes(0) {
+Chart::Chart(uint32_t col_height, uint32_t note_width_, uint32_t note_height_) : points(512), last_press(0), indices(768), notes(0) {
 	column_height = col_height + note_height_;
 	note_width = note_width_;
 	note_height = note_height_;
 	note_index = 0;
-	total_columns = 0;
 }
 
 #define READ(stream, dat, sz) stream.read(reinterpret_cast<char *>(dat), sz)
@@ -98,6 +99,7 @@ Chart::Chart(uint32_t col_height, uint32_t note_width_, uint32_t note_height_) :
 // followed by note count number of
 // timestamp (8 bytes), columns (4 bytes)
 int Chart::deserialize(std::istream &is) {
+	int total_cols = 0;
 	is.exceptions(std::ostream::failbit | std::ostream::badbit);
 	try {
 		// eventually, use endian.h to be extra standard, but for now,
@@ -113,7 +115,7 @@ int Chart::deserialize(std::istream &is) {
 		if (tmp.u_32 != Chart::version)
 			return -1;
 		READ(is, &tmp.u_32, sizeof(tmp.u_32));
-		notes.resize(tmp.u_32);
+		notes.resize(tmp.u_32); // maybe use reserve instead?
 		uint64_t last_timestamp = 0;
 		for (unsigned i = 0; i < tmp.u_32; i++) {
 			Note n;
@@ -125,13 +127,14 @@ int Chart::deserialize(std::istream &is) {
 			if (n.columns == 0)
 				return -1;
 			int max_column = 8 * sizeof(uint32_t) - std::countl_zero<uint32_t>(n.columns); // index of the last 1 in n.columns
-			if (max_column > total_columns)
-				total_columns = max_column;
+			if (max_column > total_cols)
+				total_cols = max_column;
 			notes[i] = n;
 		}
 	} catch (const std::ios_base::failure &err) {
 		return err.code().value();
 	}
+	last_press.resize(total_cols); // resize default initializes new elements
 	return 0;
 }
 
@@ -149,7 +152,8 @@ void Chart::draw(uint64_t t0, uint64_t t1) {
 			// we can do this because notes are kept ordered by time
 			note_index++; // next time, don't bother with this note
 		} else {
-			for (int j = 0; j < total_columns; j++) {
+			int total_cols = total_columns();
+			for (int j = 0; j < total_cols; j++) {
 				if ((notes[i].columns >> j) & 1) {
 					const int32_t x0 = note_width * j;
 					const int32_t x1 = x0 + note_width;
@@ -173,7 +177,7 @@ void Chart::draw(uint64_t t0, uint64_t t1) {
 	}
 }
 
-std::pair<Note *, uint64_t> Chart::close_note(int column, uint64_t time, uint64_t threshhold) {
+std::pair<Note *, uint64_t> Chart::close_note(unsigned column, uint64_t time, uint64_t threshhold) {
 	unsigned i = note_index;
 	unsigned max = notes.size();
 	Note *upper = nullptr;
@@ -200,15 +204,19 @@ std::pair<Note *, uint64_t> Chart::close_note(int column, uint64_t time, uint64_
 }
 
 int Chart::width() {
-	return total_columns * note_width;
+	return total_columns() * note_width;
 }
 
 int Chart::height() {
 	return column_height - note_height;
 }
 
+int Chart::total_columns() {
+	return last_press.capacity();
+}
+
 struct KeyStates {
-	int data[SDL_NUM_SCANCODES];
+	unsigned data[SDL_NUM_SCANCODES];
 	bool pressed[SDL_NUM_SCANCODES];
 
 	KeyStates() = default; // RAII, those arrays are initialized!
@@ -266,7 +274,7 @@ int main(int argc, char **argv) {
 		std::cout << "failed to open file\n";
 		return -1;
 	}
-	Chart ch(600, 100, 20);
+	Chart ch(600, 100, 8);
 	if (ch.deserialize(in)) {
 		std::cout << "failed to deserialize file\n";
 		return -1;
@@ -400,9 +408,9 @@ int main(int argc, char **argv) {
 	ks.data[SDL_SCANCODE_K] = COLUMN(3);
 
 	// the following 4 variables are times in milliseconds
-	const uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
-	const uint64_t display_timespan = 750; // notes at the top of the screen will be display_timespan ms in the future
-	const uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
+	uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
+	uint64_t display_timespan = 750; // notes at the top of the screen will be display_timespan ms in the future
+	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
 	int64_t audio_offset = -235;
 
 	SDL_RaiseWindow(win);
@@ -421,21 +429,26 @@ int main(int argc, char **argv) {
 				// I need a new scope here because C++ throws a fit if you
 				// declare variables after a label without one
 				bool is_held = ks.set(ev.key.keysym.scancode, true);
-				int col = ks.data[ev.key.keysym.scancode];
-				if (!is_held && col) {
-					auto [found, delta] = ch.close_note(col, song_offset, strike_timespan);
-					if (found) {
-						uint64_t score = strike_timespan - delta;
-						/*
-						if (score > strike_timespan)
-							std::cout << "??? ";
-						else if (score > strike_timespan - strike_timespan / 8)
-							std::cout << "perfect ";
-						*/
-						std::cout << score << '\n';
-						found->columns ^= col; // remove the note from its column to prevent it from being pressable and drawn
-					} else {
-						std::cout << "strike!\n";
+				unsigned col = ks.data[ev.key.keysym.scancode];
+				if (col) {
+					unsigned col_index = std::countr_zero(col);
+					if (col_index < ch.last_press.size())
+						ch.last_press[col_index] = song_offset;
+					if (!is_held) {
+						auto [found, delta] = ch.close_note(col, song_offset, strike_timespan);
+						if (found) {
+							uint64_t score = strike_timespan - delta;
+							/*
+							if (score > strike_timespan)
+								std::cout << "??? ";
+							else if (score > strike_timespan - strike_timespan / 8)
+								std::cout << "perfect ";
+							*/
+							//std::cout << score << '\n';
+							found->columns ^= col; // remove the note from its column to prevent it from being pressable and drawn
+						} else {
+							//std::cout << "strike!\n";
+						}
 					}
 				}
 				break;
