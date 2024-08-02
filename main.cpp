@@ -292,14 +292,13 @@ int main(int argc, char **argv) {
 
 	// TODO: move the following shader related stuff to another file
 	// all other shaders should live there too
+	//
+	// these shader variable names don't make sense, sorry 
 	const char vtx_pix2uv_src[] =
 	"#version 460 core\n"
-	"uniform vec2 ssize = vec2(100, 600);\n" // tmp
-	"layout(location = 0) in ivec2 ppos;\n"
+	"layout (location = 0) in vec3 aPos;\n"
 	"void main() {\n"
-	"	vec2 uv = (2 * ppos) / ssize;\n"
-	"	uv = vec2(uv.x - 1.0, 1.0 - uv.y);\n"
-	"	gl_Position = vec4(uv, 0.0, 1.0);\n"
+	"	gl_Position = vec4(aPos, 1.0);\n"
 	"}";
 	GLuint vtx_pix2uv = load_shader(GL_VERTEX_SHADER, vtx_pix2uv_src, sizeof(vtx_pix2uv_src));
 	if (!vtx_pix2uv)
@@ -348,26 +347,27 @@ int main(int argc, char **argv) {
 	const GLuint vbo = buffers[0];
 	const GLuint ebo = buffers[1];
 	glBindVertexArray(vao);
-	int32_t verts[] = {
-		20, 100,
-		30, 100,
-		20, 80,
-		30, 80,
+	float verts[] = {
+		 0.5f,  0.5f, 0.0f,
+		 0.5f, -0.5f, 0.0f,
+		-0.5f, -0.5f, 0.0f,
+		-0.5f,  0.5f, 0.0f,
 	};
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STREAM_DRAW);
 	uint32_t indices[] = {
-		0, 1, 2,
+		0, 1, 3,
 		1, 2, 3,
 	};
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STREAM_DRAW);
-	glVertexAttribPointer(0, 3, GL_INT, GL_FALSE, 3 * sizeof(*verts), 0);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_DYNAMIC_DRAW);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(*verts), 0);
 	glEnableVertexAttribArray(0);
+
+	/*
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
-
-	glClearColor(0.2, 0.3, 0.3, 1.0);
+	*/
 
 	/*
 	// not really an texture atlas yet, since we only have 1 texture :(
@@ -462,6 +462,7 @@ int main(int argc, char **argv) {
 		glUseProgram(note_prog);
 		glBindVertexArray(vao);
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0); // what's this for?
 		SDL_GL_SwapWindow(win);
 		/*
 		SDL_RenderClear(ren);
