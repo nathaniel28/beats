@@ -316,9 +316,10 @@ int main(int argc, char **argv) {
 	// all other shaders should live there too
 	const char vtx_shader_src[] =
 	"#version 460 core\n"
-	"layout (location = 0) in vec2 pix;\n"
+	"layout (location = 0) in ivec2 pix;\n"
 	"void main() {\n"
-	"	gl_Position = vec4(pix, 0.0, 1.0);\n"
+	"	vec2 norm = 2.0 * vec2(float(pix.x), float(pix.y)) / vec2(400, 600) - 1.0;\n"
+	"	gl_Position = vec4(norm, 0.0, 1.0);\n"
 	"}";
 	GLuint vtx_shader = load_shader(GL_VERTEX_SHADER, vtx_shader_src, sizeof(vtx_shader_src));
 	if (!vtx_shader)
@@ -366,29 +367,35 @@ int main(int argc, char **argv) {
 	defer { glDeleteBuffers(sizeof(buffers) / sizeof(*buffers), buffers); };
 	const GLuint vbo = buffers[0];
 	const GLuint ebo = buffers[1];
-	glBindVertexArray(vao);
-	uint32_t verts[] = {
-		0, 0,
-		0, 200,
-		300, 200,
-		300, 0,
-	};
-	glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
-	uint32_t indices[] = {
-		0, 1, 2,
-		0, 2, 3,
-	};
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_DYNAMIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_UNSIGNED_INT, GL_FALSE, 2 * sizeof(*verts), 0);
-	glEnableVertexAttribArray(0);
 
 	ch.draw(4500, 5000);
+
+	int32_t tx = 10;
+	int32_t ty = 0;
+	ch.points.clear();
+	ch.points.emplace(ch.points.end(), 0 + tx, 0 + ty);
+	ch.points.emplace(ch.points.end(), 0 + tx, 100 + ty);
+	ch.points.emplace(ch.points.end(), 100 + tx, 100 + ty);
+	ch.points.emplace(ch.points.end(), 100 + tx, 0 + ty);
 	for (const auto &p : ch.points) {
 		std::cout << '(' << p.x << ", " << p.y << ")\n";
 	}
-	return 0;
+	const uint32_t sz = ch.points.size();
+	ch.indices.clear();
+	ch.indices.push_back(sz - 4);
+	ch.indices.push_back(sz - 3);
+	ch.indices.push_back(sz - 2);
+	ch.indices.push_back(sz - 4);
+	ch.indices.push_back(sz - 2);
+	ch.indices.push_back(sz - 1);
+
+	glBindVertexArray(vao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(Point) * ch.points.size(), ch.points.data(), GL_DYNAMIC_DRAW);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * ch.indices.size(), ch.indices.data(), GL_DYNAMIC_DRAW);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0);
+	glEnableVertexAttribArray(0);
 
 	/*
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
