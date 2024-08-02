@@ -28,6 +28,7 @@ template <class F> deferrer<F> operator*(defer_dummy, F f) { return {f}; }
 #define defer auto DEFER(__LINE__) = defer_dummy{} *[&]()
 
 // a point given a pixel coordinate on screen
+// we do rely on the fact that a point is 64 bits, and a vector<Point> is packed
 struct Point {
 	int32_t x;
 	int32_t y;
@@ -135,6 +136,7 @@ int Chart::deserialize(std::istream &is) {
 
 void Chart::draw(uint64_t t0, uint64_t t1) {
 	points.clear(); // does not deallocate memory, though
+	indices.clear();
 	unsigned i = note_index;
 	//std::cerr << t0 << ' ' << t1 << ' ' << i << '\n';
 	unsigned max = notes.size();
@@ -152,17 +154,17 @@ void Chart::draw(uint64_t t0, uint64_t t1) {
 					const int32_t x1 = x0 + note_width;
 					const int32_t y1 = column_height - ((column_height * (notes[i].timestamp - t0)) / (t1 - t0));
 					const int32_t y0 = static_cast<int32_t>(note_height) < y1 ? y1 - note_height : 0;
-					points.emplace(points.end(), x0, y0);
-					points.emplace(points.end(), x1, y0);
-					points.emplace(points.end(), x1, y1);
-					points.emplace(points.end(), x0, y1);
 					const uint32_t sz = points.size();
-					indices.push_back(sz - 4);
-					indices.push_back(sz - 3);
-					indices.push_back(sz - 2);
-					indices.push_back(sz - 4);
-					indices.push_back(sz - 2);
-					indices.push_back(sz - 1);
+					indices.emplace(indices.end(), sz + 0);
+					indices.emplace(indices.end(), sz + 1);
+					indices.emplace(indices.end(), sz + 2);
+					indices.emplace(indices.end(), sz + 0);
+					indices.emplace(indices.end(), sz + 2);
+					indices.emplace(indices.end(), sz + 3);
+					points.emplace(points.end(), x0, y0);
+					points.emplace(points.end(), x0, y1);
+					points.emplace(points.end(), x1, y1);
+					points.emplace(points.end(), x1, y0);
 				}
 			}
 		}
@@ -314,23 +316,26 @@ int main(int argc, char **argv) {
 
 	// TODO: move the following shader related stuff to another file
 	// all other shaders should live there too
+	//
+	// TODO: screen size is hardcoded, pass in as a uniform or find it out,
+	// without hardcoding it
 	const char vtx_shader_src[] =
-	"#version 460 core\n"
-	"layout (location = 0) in ivec2 pix;\n"
-	"void main() {\n"
-	"	vec2 norm = 2.0 * vec2(float(pix.x), float(pix.y)) / vec2(400, 600) - 1.0;\n"
-	"	gl_Position = vec4(norm, 0.0, 1.0);\n"
-	"}";
+		"#version 460 core\n"
+		"layout (location = 0) in ivec2 pix;\n"
+		"void main() {\n"
+		"	vec2 norm = 2.0 * vec2(pix) / vec2(400, 600) - 1.0;\n"
+		"	gl_Position = vec4(norm, 0.0, 1.0);\n"
+		"}";
 	GLuint vtx_shader = load_shader(GL_VERTEX_SHADER, vtx_shader_src, sizeof(vtx_shader_src));
 	if (!vtx_shader)
 		return -1;
 	defer { glDeleteShader(vtx_shader); };
 	const char frag_color_src[] =
-	"#version 460 core\n"
-	"out vec4 frag_col;\n"
-	"void main() {\n"
-	"	frag_col = vec4(0.3, 0.5, 0.9, 1.0);\n"
-	"}";
+		"#version 460 core\n"
+		"out vec4 frag_col;\n"
+		"void main() {\n"
+		"	frag_col = vec4(0.3, 0.5, 0.9, 1.0);\n"
+		"}";
 	GLuint frag_color = load_shader(GL_FRAGMENT_SHADER, frag_color_src, sizeof(frag_color_src));
 	if (!frag_color)
 		return -1;
@@ -369,38 +374,24 @@ int main(int argc, char **argv) {
 	const GLuint ebo = buffers[1];
 
 	ch.draw(4500, 5000);
-
-	int32_t tx = 10;
-	int32_t ty = 0;
-	ch.points.clear();
-	ch.points.emplace(ch.points.end(), 0 + tx, 0 + ty);
-	ch.points.emplace(ch.points.end(), 0 + tx, 100 + ty);
-	ch.points.emplace(ch.points.end(), 100 + tx, 100 + ty);
-	ch.points.emplace(ch.points.end(), 100 + tx, 0 + ty);
 	for (const auto &p : ch.points) {
 		std::cout << '(' << p.x << ", " << p.y << ")\n";
 	}
-	const uint32_t sz = ch.points.size();
-	ch.indices.clear();
-	ch.indices.push_back(sz - 4);
-	ch.indices.push_back(sz - 3);
-	ch.indices.push_back(sz - 2);
-	ch.indices.push_back(sz - 4);
-	ch.indices.push_back(sz - 2);
-	ch.indices.push_back(sz - 1);
+	for (const auto &u : ch.indices) {
+		std::cout << u << ", ";
+	}
+	std::cout << '\n';
 
 	glBindVertexArray(vao);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(Point) * ch.points.size(), ch.points.data(), GL_DYNAMIC_DRAW);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * ch.indices.size(), ch.indices.data(), GL_DYNAMIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0); // why does GL_FLOAT work but GL_INT doesn't?
 	glEnableVertexAttribArray(0);
 
-	/*
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
-	*/
 
 	/*
 	// not really an texture atlas yet, since we only have 1 texture :(
@@ -494,7 +485,7 @@ int main(int argc, char **argv) {
 		glClear(GL_COLOR_BUFFER_BIT);
 		glUseProgram(note_prog);
 		glBindVertexArray(vao);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		glDrawElements(GL_TRIANGLES, ch.indices.size(), GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0); // what's this for?
 		SDL_GL_SwapWindow(win);
 		/*
