@@ -27,7 +27,11 @@ template <class F> deferrer<F> operator*(defer_dummy, F f) { return {f}; }
 #define DEFER(LINE) DEFER_(LINE)
 #define defer auto DEFER(__LINE__) = defer_dummy{} *[&]()
 
-#define MAX_NOTES_PER_FRAME 512
+// a point given a pixel coordinate on screen
+struct Point {
+	int32_t x;
+	int32_t y;
+};
 
 struct Note {
 	uint64_t timestamp; // in milliseconds
@@ -36,11 +40,16 @@ struct Note {
 };
 
 class Chart {
+public:
+	std::vector<Point> points;
+	std::vector<uint32_t> indices;
+private:
 	std::vector<Note> notes;
-	SDL_Rect note_bounds; // .x and .y are changed to draw notes; .w and .h are not
-	int column_height;
 	int total_columns; // the number of note columns in the chart
 	unsigned note_index; // keep track of what note to start drawing from
+	uint32_t column_height;
+	uint32_t note_width;
+	uint32_t note_height;
 
 	// file signature
 	static const uint64_t magic = 0xF1E0007472616863;
@@ -49,7 +58,7 @@ class Chart {
 public:
 	// calling the constructor does not make a Chart ready to use.
 	// you must call deserialize next
-	Chart(int col_height, int note_width, int note_height);
+	Chart(uint32_t col_height, uint32_t note_width, uint32_t note_height);
 
 	// on success this function returns 0 and this Chart is safe to use
 	// calls istream::exceptions
@@ -59,7 +68,7 @@ public:
 
 	// draw the notes from t0 to t1, also updates note_index
 	// future calls should be made with a greater t0 and t1
-	void draw(SDL_Renderer *, SDL_Texture *, uint64_t t0, uint64_t t1);
+	void draw(uint64_t t0, uint64_t t1);
 
 	// returns the closest *unpressed* note and the absolute time difference
 	// between time and that note's timestamp, where column is the offset of
@@ -72,10 +81,10 @@ public:
 	int height();
 };
 
-Chart::Chart(int col_height, int note_width, int note_height) : notes(0) {
-	column_height = col_height + note_height;
-	note_bounds.w = note_width;
-	note_bounds.h = note_height;
+Chart::Chart(uint32_t col_height, uint32_t note_width_, uint32_t note_height_) : points(512), indices(768), notes(0) {
+	column_height = col_height + note_height_;
+	note_width = note_width_;
+	note_height = note_height_;
 	note_index = 0;
 	total_columns = 0;
 }
@@ -124,7 +133,8 @@ int Chart::deserialize(std::istream &is) {
 	return 0;
 }
 
-void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) {
+void Chart::draw(uint64_t t0, uint64_t t1) {
+	points.clear(); // does not deallocate memory, though
 	unsigned i = note_index;
 	//std::cerr << t0 << ' ' << t1 << ' ' << i << '\n';
 	unsigned max = notes.size();
@@ -138,9 +148,21 @@ void Chart::draw(SDL_Renderer *ren, SDL_Texture *tex, uint64_t t0, uint64_t t1) 
 		} else {
 			for (int j = 0; j < total_columns; j++) {
 				if ((notes[i].columns >> j) & 1) {
-					note_bounds.x = note_bounds.w * j;
-					note_bounds.y = column_height - ((column_height * (notes[i].timestamp - t0)) / (t1 - t0)) - note_bounds.h;
-					SDL_RenderCopy(ren, tex, nullptr, &note_bounds);
+					const int32_t x0 = note_width * j;
+					const int32_t x1 = x0 + note_width;
+					const int32_t y1 = column_height - ((column_height * (notes[i].timestamp - t0)) / (t1 - t0));
+					const int32_t y0 = static_cast<int32_t>(note_height) < y1 ? y1 - note_height : 0;
+					points.emplace(points.end(), x0, y0);
+					points.emplace(points.end(), x1, y0);
+					points.emplace(points.end(), x1, y1);
+					points.emplace(points.end(), x0, y1);
+					const uint32_t sz = points.size();
+					indices.push_back(sz - 4);
+					indices.push_back(sz - 3);
+					indices.push_back(sz - 2);
+					indices.push_back(sz - 4);
+					indices.push_back(sz - 2);
+					indices.push_back(sz - 1);
 				}
 			}
 		}
@@ -175,11 +197,11 @@ std::pair<Note *, uint64_t> Chart::close_note(int column, uint64_t time, uint64_
 }
 
 int Chart::width() {
-	return total_columns * note_bounds.w;
+	return total_columns * note_width;
 }
 
 int Chart::height() {
-	return column_height - note_bounds.h;
+	return column_height - note_height;
 }
 
 struct KeyStates {
@@ -292,18 +314,16 @@ int main(int argc, char **argv) {
 
 	// TODO: move the following shader related stuff to another file
 	// all other shaders should live there too
-	//
-	// these shader variable names don't make sense, sorry 
-	const char vtx_pix2uv_src[] =
+	const char vtx_shader_src[] =
 	"#version 460 core\n"
 	"layout (location = 0) in vec2 pix;\n"
 	"void main() {\n"
 	"	gl_Position = vec4(pix, 0.0, 1.0);\n"
 	"}";
-	GLuint vtx_pix2uv = load_shader(GL_VERTEX_SHADER, vtx_pix2uv_src, sizeof(vtx_pix2uv_src));
-	if (!vtx_pix2uv)
+	GLuint vtx_shader = load_shader(GL_VERTEX_SHADER, vtx_shader_src, sizeof(vtx_shader_src));
+	if (!vtx_shader)
 		return -1;
-	defer { glDeleteShader(vtx_pix2uv); };
+	defer { glDeleteShader(vtx_shader); };
 	const char frag_color_src[] =
 	"#version 460 core\n"
 	"out vec4 frag_col;\n"
@@ -318,7 +338,7 @@ int main(int argc, char **argv) {
 	if (!note_prog)
 		return -1;
 	defer { glDeleteProgram(note_prog); }; // NOTE: these can be deleted after linking the program
-	glAttachShader(note_prog, vtx_pix2uv);
+	glAttachShader(note_prog, vtx_shader);
 	glAttachShader(note_prog, frag_color);
 	glLinkProgram(note_prog);
 	GLint status;
@@ -363,6 +383,12 @@ int main(int argc, char **argv) {
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_DYNAMIC_DRAW);
 	glVertexAttribPointer(0, 2, GL_UNSIGNED_INT, GL_FALSE, 2 * sizeof(*verts), 0);
 	glEnableVertexAttribArray(0);
+
+	ch.draw(4500, 5000);
+	for (const auto &p : ch.points) {
+		std::cout << '(' << p.x << ", " << p.y << ")\n";
+	}
+	return 0;
 
 	/*
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
