@@ -154,23 +154,23 @@ void Chart::draw(uint64_t t0, uint64_t t1) {
 		} else {
 			int total_cols = total_columns();
 			for (int j = 0; j < total_cols; j++) {
-				if ((notes[i].columns >> j) & 1) {
-					const int32_t x0 = note_width * j;
-					const int32_t x1 = x0 + note_width;
-					const int32_t y1 = ((column_height * (notes[i].timestamp - t0)) / (t1 - t0));
-					const int32_t y0 = static_cast<int32_t>(note_height) < y1 ? y1 - note_height : 0;
-					const uint32_t sz = points.size();
-					indices.emplace(indices.end(), sz + 0);
-					indices.emplace(indices.end(), sz + 1);
-					indices.emplace(indices.end(), sz + 2);
-					indices.emplace(indices.end(), sz + 0);
-					indices.emplace(indices.end(), sz + 2);
-					indices.emplace(indices.end(), sz + 3);
-					points.emplace(points.end(), x0, y0);
-					points.emplace(points.end(), x0, y1);
-					points.emplace(points.end(), x1, y1);
-					points.emplace(points.end(), x1, y0);
-				}
+				if (!((notes[i].columns >> j) & 1))
+					continue;
+				const int32_t x0 = note_width * j;
+				const int32_t x1 = x0 + note_width;
+				const int32_t y1 = ((column_height * (notes[i].timestamp - t0)) / (t1 - t0));
+				const int32_t y0 = static_cast<int32_t>(note_height) < y1 ? y1 - note_height : 0;
+				const uint32_t sz = points.size();
+				indices.emplace(indices.end(), sz + 0);
+				indices.emplace(indices.end(), sz + 1);
+				indices.emplace(indices.end(), sz + 2);
+				indices.emplace(indices.end(), sz + 0);
+				indices.emplace(indices.end(), sz + 2);
+				indices.emplace(indices.end(), sz + 3);
+				points.emplace(points.end(), x0, y0);
+				points.emplace(points.end(), x0, y1);
+				points.emplace(points.end(), x1, y1);
+				points.emplace(points.end(), x1, y0);
 			}
 		}
 		i++;
@@ -259,6 +259,33 @@ GLuint load_shader(GLenum type, const GLchar *src, GLint len) {
 	return shader;
 }
 
+GLuint create_program(const std::string &vtx_src, const std::string &frag_src) {
+	GLuint vtx_shader = load_shader(GL_VERTEX_SHADER, vtx_src.data(), vtx_src.size());
+	if (!vtx_shader)
+		return 0;
+	defer { glDeleteShader(vtx_shader); };
+	GLuint frag_shader = load_shader(GL_FRAGMENT_SHADER, frag_src.data(), frag_src.size());
+	if (!frag_shader)
+		return 0;
+	defer { glDeleteShader(frag_shader); };
+	GLuint prog = glCreateProgram();
+	if (!prog)
+		return 0;
+	glAttachShader(prog, vtx_shader);
+	glAttachShader(prog, frag_shader);
+	glLinkProgram(prog);
+	GLint status;
+	glGetProgramiv(prog, GL_LINK_STATUS, &status);
+	if (status != GL_TRUE) {
+		GLchar log[256];
+		GLsizei log_len;
+		glGetShaderInfoLog(prog, sizeof(log), &log_len, log);
+		std::cout.write(log, log_len) << '\n';
+		return 0;
+	}
+	return prog;
+}
+
 int main(int argc, char **argv) {
 	if (argc != 2) {
 		const char *name = argv[0]; // the last element of argv is null
@@ -320,45 +347,23 @@ int main(int argc, char **argv) {
 	// TODO: screen size is hardcoded, pass in as a uniform or find it out,
 	// without hardcoding it
 	// this shader converts pixel coordinates (as ints)
-	// to floats on the range [-1.0, 1.0]
-	const char vtx_shader_src[] =
+	// to floats on the range [-1.0, 1.0] and colors them blue
+	GLuint note_prog = create_program(
 		"#version 460 core\n"
 		"layout (location = 0) in ivec2 pix;\n"
 		"void main() {\n"
 		"	vec2 norm = 2.0 * vec2(pix) / vec2(400, 600) - 1.0;\n"
 		"	gl_Position = vec4(norm, 0.0, 1.0);\n"
-		"}";
-	GLuint vtx_shader = load_shader(GL_VERTEX_SHADER, vtx_shader_src, sizeof(vtx_shader_src));
-	if (!vtx_shader)
-		return -1;
-	defer { glDeleteShader(vtx_shader); };
-	// TODO: note color is hardcoded! get a texture!
-	const char frag_color_src[] =
+		"}"
+		,
 		"#version 460 core\n"
 		"out vec4 frag_col;\n"
 		"void main() {\n"
 		"	frag_col = vec4(0.486, 0.729, 0.815, 1.0);\n"
-		"}";
-	GLuint frag_color = load_shader(GL_FRAGMENT_SHADER, frag_color_src, sizeof(frag_color_src));
-	if (!frag_color)
-		return -1;
-	defer { glDeleteShader(frag_color); };
-	GLuint note_prog = glCreateProgram();
+		"}"
+	);
 	if (!note_prog)
 		return -1;
-	defer { glDeleteProgram(note_prog); }; // NOTE: these can be deleted after linking the program
-	glAttachShader(note_prog, vtx_shader);
-	glAttachShader(note_prog, frag_color);
-	glLinkProgram(note_prog);
-	GLint status;
-	glGetProgramiv(note_prog, GL_LINK_STATUS, &status);
-	if (status != GL_TRUE) {
-		GLchar log[256];
-		GLsizei log_len;
-		glGetShaderInfoLog(note_prog, sizeof(log), &log_len, log);
-		std::cout.write(log, log_len) << '\n';
-		return -1;
-	}
 
 	GLuint vao;
 	glGenVertexArrays(1, &vao);
@@ -366,6 +371,7 @@ int main(int argc, char **argv) {
 		std::cout << "failed to vertex array object\n";
 		return -1;
 	}
+	defer { glDeleteVertexArrays(1, &vao); };
 	GLuint buffers[2];
 	glGenBuffers(sizeof(buffers) / sizeof(*buffers), buffers);
 	if (glGetError() != GL_NO_ERROR) {
@@ -375,6 +381,56 @@ int main(int argc, char **argv) {
 	defer { glDeleteBuffers(sizeof(buffers) / sizeof(*buffers), buffers); };
 	const GLuint vbo = buffers[0];
 	const GLuint ebo = buffers[1];
+
+	// now set up a framebuffer and a texture so we can render here instead
+	// of directly to the screen this way, we can do post processing
+	GLuint fbo;
+	glGenFramebuffers(1, &fbo);
+	if (glGetError() != GL_NO_ERROR) {
+		std::cout << "failed to create framebuffer\n";
+		return -1;
+	}
+	defer { glDeleteFramebuffers(1, &fbo); };
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	GLuint cbuf_tex;
+	glGenTextures(1, &cbuf_tex);
+	if (glGetError() != GL_NO_ERROR) {
+		std::cout << "failed to generate texture\n";
+		return -1;
+	}
+	defer { glDeleteTextures(1, &cbuf_tex); };
+	glBindTexture(GL_TEXTURE_2D, cbuf_tex);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ch.width(), ch.height(), 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+	// tutorial also says to set GL_TEXTURE_MAG_FILTER and
+	// GL_TEXTURE_MIN_FILTER to GL_LINEAR, but I think I can skip that
+	glBindTexture(GL_TEXTURE_2D, 0); // why unbind if we're gonna rebind it ever time we render? idk but tutorial says so
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cbuf_tex, 0);
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		std::cout << "failed to initialize framebuffer\n";
+		return -1;
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0); // I'm gonna need to go back and find out if all these unbinds are really required...
+
+	GLuint postprocess_prog = create_program(
+		"#version 460 core\n"
+		"layout (location = 0) in vec2 aPos;\n"
+		"layout (location = 1) in vec2 aTexCoords;\n"
+		"out vec2 texCoords;\n"
+		"void main() {\n"
+		"	gl_Position = vec4(aPos, 0.0, 1.0);\n"
+		"	texCoords = aTexCoords;\n"
+		"}"
+		,
+		"#version 460 core\n"
+		"out vec4 fragColor;\n"
+		"in vec2 texCoords;\n"
+		"uniform sampler2D tex;\n"
+		"void main() {\n"
+		"	fragColor = texture(tex, texCoords);\n"
+		"}"
+	);
+	if (!postprocess_prog)
+		return -1;
 
 	// "The audio device frequency is specified in Hz;"
 	// "in modern times, 48000 is often a reasonable default."
@@ -406,12 +462,13 @@ int main(int argc, char **argv) {
 	ks.data[SDL_SCANCODE_F] = COLUMN(1);
 	ks.data[SDL_SCANCODE_J] = COLUMN(2);
 	ks.data[SDL_SCANCODE_K] = COLUMN(3);
+	ks.data[SDL_SCANCODE_L] = COLUMN(4);
 
 	// the following 4 variables are times in milliseconds
 	uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
 	uint64_t display_timespan = 750; // notes at the top of the screen will be display_timespan ms in the future
 	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
-	int64_t audio_offset = -235;
+	int64_t audio_offset = -25;
 
 	SDL_RaiseWindow(win);
 	Mix_PlayMusic(track, 0);
@@ -436,14 +493,14 @@ int main(int argc, char **argv) {
 				if (col_index >= ch.last_press.size())
 					break;
 				ch.last_press[col_index] = song_offset;
-				if (is_held) // eventually, this will have code aside from break; so don't move it
+				if (is_held) {
+					// eventually, this will have code aside from break; so don't move it
+					std::cout << "skipping held key\n";
 					break;
+				}
 				auto [found, delta] = ch.close_note(col, song_offset, strike_timespan);
 				if (found) {
 					uint64_t score = strike_timespan - delta;
-					// woah there buddy, that's too much indentation!
-					// try not being an idiot and moving some of this
-					// to a function (or a few!)
 					/*
 					if (score > strike_timespan)
 						std::cout << "??? ";
@@ -452,6 +509,7 @@ int main(int argc, char **argv) {
 					*/
 					//std::cout << score << '\n';
 					found->columns ^= col; // remove the note from its column to prevent it from being pressable and drawn
+					//std::cout << start_frame << ' ' << found->timestamp << '\n';
 				} else {
 					//std::cout << "strike!\n";
 				}
@@ -479,12 +537,10 @@ int main(int argc, char **argv) {
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * ch.indices.size(), ch.indices.data(), GL_DYNAMIC_DRAW);
 		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0); // why does GL_FLOAT work but GL_INT doesn't?
 		glEnableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0); // we don't need to do this if we make sure to bind buffers first, right?
 
 		// more magic happens here
 		glUseProgram(note_prog);
-		glBindVertexArray(vao);
 		glDrawElements(GL_TRIANGLES, ch.indices.size(), GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0); // what's this for? resetting state?
 		SDL_GL_SwapWindow(win);
