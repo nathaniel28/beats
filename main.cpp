@@ -286,6 +286,23 @@ GLuint create_program(const std::string &vtx_src, const std::string &frag_src) {
 	return prog;
 }
 
+// verdict: too evil, probably doesn't work
+/*
+template <class Gen, typename... Fill>
+bool gen_objects(Gen gen, Fill&... args) {
+	using FT = std::common_type_t<Fill...>;
+	std::array<FT, sizeof...(Fill)> buf;
+	gen(sizeof...(Fill), buf.data());
+	unsigned i = 0;
+	bool err = false;
+	([&]() {
+		args = buf[i++];
+		err |= !args;
+	}, ...);
+	return err;
+}
+*/
+
 int main(int argc, char **argv) {
 	if (argc != 2) {
 		const char *name = argv[0]; // the last element of argv is null
@@ -365,14 +382,16 @@ int main(int argc, char **argv) {
 	if (!note_prog)
 		return -1;
 
-	GLuint vao;
-	glGenVertexArrays(1, &vao);
+	GLuint vaos[2];
+	glGenVertexArrays(sizeof(vaos) / sizeof(*vaos), vaos);
 	if (glGetError() != GL_NO_ERROR) {
-		std::cout << "failed to vertex array object\n";
+		std::cout << "failed to vertex array objects\n";
 		return -1;
 	}
-	defer { glDeleteVertexArrays(1, &vao); };
-	GLuint buffers[2];
+	defer { glDeleteVertexArrays(sizeof(vaos) / sizeof(*vaos), vaos); };
+	const GLuint vao = vaos[0];
+	const GLuint scr_quad_vao = vaos[1];
+	GLuint buffers[3];
 	glGenBuffers(sizeof(buffers) / sizeof(*buffers), buffers);
 	if (glGetError() != GL_NO_ERROR) {
 		std::cout << "failed to generate buffers\n";
@@ -381,6 +400,27 @@ int main(int argc, char **argv) {
 	defer { glDeleteBuffers(sizeof(buffers) / sizeof(*buffers), buffers); };
 	const GLuint vbo = buffers[0];
 	const GLuint ebo = buffers[1];
+	const GLuint scr_quad_vbo = buffers[2];
+
+	// we need a quad to fill the whole screen in order to draw a post-processed texture
+	// the first two columns are normalized device coordinates for the quad
+	// the second two columns are texture coordinates
+	const float scr_quad[] = {
+		-1.0,  1.0,  0.0, 1.0,
+		-1.0, -1.0,  0.0, 0.0,
+		 1.0, -1.0,  1.0, 0.0,
+
+		-1.0,  1.0,  0.0, 1.0,
+		 1.0, -1.0,  1.0, 0.0,
+		 1.0,  1.0,  1.0, 1.0
+	};
+	glBindVertexArray(scr_quad_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, scr_quad_vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(scr_quad), scr_quad, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void *>(2 * sizeof(float)));
 
 	// now set up a framebuffer and a texture so we can render here instead
 	// of directly to the screen this way, we can do post processing
@@ -401,9 +441,9 @@ int main(int argc, char **argv) {
 	defer { glDeleteTextures(1, &cbuf_tex); };
 	glBindTexture(GL_TEXTURE_2D, cbuf_tex);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ch.width(), ch.height(), 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
-	// tutorial also says to set GL_TEXTURE_MAG_FILTER and
-	// GL_TEXTURE_MIN_FILTER to GL_LINEAR, but I think I can skip that
-	glBindTexture(GL_TEXTURE_2D, 0); // why unbind if we're gonna rebind it ever time we render? idk but tutorial says so
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	//glBindTexture(GL_TEXTURE_2D, 0); // why unbind if we're gonna rebind it ever time we render? idk but tutorial says so
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cbuf_tex, 0);
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		std::cout << "failed to initialize framebuffer\n";
@@ -426,7 +466,7 @@ int main(int argc, char **argv) {
 		"in vec2 texCoords;\n"
 		"uniform sampler2D tex;\n"
 		"void main() {\n"
-		"	fragColor = texture(tex, texCoords);\n"
+		"	fragColor = vec4(texture(tex, texCoords).rgb, 1.0);\n"
 		"}"
 	);
 	if (!postprocess_prog)
@@ -469,6 +509,8 @@ int main(int argc, char **argv) {
 	uint64_t display_timespan = 750; // notes at the top of the screen will be display_timespan ms in the future
 	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
 	int64_t audio_offset = -25;
+
+	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // debug wireframe
 
 	SDL_RaiseWindow(win);
 	Mix_PlayMusic(track, 0);
@@ -523,6 +565,7 @@ int main(int argc, char **argv) {
 			}
 		}
 
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		// ch.draw populates ch.points and ch.indices
@@ -535,14 +578,21 @@ int main(int argc, char **argv) {
 		glBufferData(GL_ARRAY_BUFFER, sizeof(Point) * ch.points.size(), ch.points.data(), GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * ch.indices.size(), ch.indices.data(), GL_DYNAMIC_DRAW);
-		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0); // why does GL_FLOAT work but GL_INT doesn't?
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0); // why does GL_FLOAT work but GL_INT doesn't, since I'm giving it ints
 		glEnableVertexAttribArray(0);
 		glBindBuffer(GL_ARRAY_BUFFER, 0); // we don't need to do this if we make sure to bind buffers first, right?
 
 		// more magic happens here
 		glUseProgram(note_prog);
 		glDrawElements(GL_TRIANGLES, ch.indices.size(), GL_UNSIGNED_INT, 0);
-		glBindVertexArray(0); // what's this for? resetting state?
+		glBindVertexArray(0); // what's this for? resetting state? but I bind another array later...
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glUseProgram(postprocess_prog);
+		glBindVertexArray(scr_quad_vao);
+		glBindTexture(GL_TEXTURE_2D, cbuf_tex);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+
 		SDL_GL_SwapWindow(win);
 
 		uint64_t elapsed = SDL_GetTicks64() - start_frame;
