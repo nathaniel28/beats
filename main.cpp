@@ -44,7 +44,7 @@ struct Note {
 class Chart {
 public:
 	std::vector<Point> points; // points of rectangles to draw notes
-	std::vector<uint64_t> last_press; // last press of a column, millisecond offset from song start
+	std::vector<uint32_t> last_press; // last press of a column, millisecond offset from song start, u32 for GLSL
 	std::vector<uint32_t> indices; // indices for the EBO to help draw points
 private:
 	std::vector<Note> notes;
@@ -367,7 +367,7 @@ int main(int argc, char **argv) {
 	// to floats on the range [-1.0, 1.0] and colors them blue
 	GLuint note_prog = create_program(
 		"#version 460 core\n"
-		"layout (location = 0) in ivec2 pix;\n"
+		"layout(location = 0) in ivec2 pix;\n"
 		"void main() {\n"
 		"	vec2 norm = 2.0 * vec2(pix) / vec2(400, 600) - 1.0;\n"
 		"	gl_Position = vec4(norm, 0.0, 1.0);\n"
@@ -451,10 +451,28 @@ int main(int argc, char **argv) {
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0); // I'm gonna need to go back and find out if all these unbinds are really required...
 
+
+	/*
+	vec3 rgb2hsv(vec3 c) {
+		const vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+		vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+		vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+		float d = q.x - min(q.w, q.y);
+		const float e = 1.0e-10;
+		return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+	}
+
+	vec3 hsv2rgb(vec3 c) {
+		const vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+		vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+		return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+	}
+	*/
+
 	GLuint postprocess_prog = create_program(
 		"#version 460 core\n"
-		"layout (location = 0) in vec2 aPos;\n"
-		"layout (location = 1) in vec2 aTexCoords;\n"
+		"layout(location = 0) in vec2 aPos;\n"
+		"layout(location = 1) in vec2 aTexCoords;\n"
 		"out vec2 texCoords;\n"
 		"void main() {\n"
 		"	gl_Position = vec4(aPos, 0.0, 1.0);\n"
@@ -465,12 +483,32 @@ int main(int argc, char **argv) {
 		"out vec4 fragColor;\n"
 		"in vec2 texCoords;\n"
 		"uniform sampler2D tex;\n"
+		"layout(location = 0) uniform float nCols;\n"
+		"layout(location = 1) uniform uint now;\n"
+		"layout(location = 2) uniform uint times[8];\n"
 		"void main() {\n"
-		"	fragColor = vec4(texture(tex, texCoords).rgb, 1.0);\n"
+		"	uint t = now - times[int(texCoords.x * nCols)];\n"
+		"	vec3 col = texture(tex, texCoords).rgb;\n"
+		"	const uint flashDuration = 500;\n"
+		"	if (t < flashDuration) {\n"
+		"		vec3 flash;\n"
+		"		if (texCoords.y <= 0.2) {\n"
+		"			flash = mix(col, vec3(0.486, 0.729, 0.815), 2.0 * (0.2 - texCoords.y));\n"
+		"		} else {\n"
+		"			float x = 1.25 - 1.25 * texCoords.y;\n"
+		"			flash = mix(col, vec3(1.0), (1.0 - x * x) * 0.15);\n"
+		"		}\n"
+		"		col = mix(col, flash, 1.0 - float(t) / float(flashDuration));\n"
+		"	}\n"
+		"	fragColor = vec4(col, 1.0);\n"
 		"}"
 	);
 	if (!postprocess_prog)
 		return -1;
+	glUseProgram(postprocess_prog);
+	glUniform1f(0, static_cast<float>(ch.total_columns())); // setting uniform "nCols"
+
+	// okay, I'm gonna need a uniform buffer object to pass uniforms to my fragment shader
 
 	// "The audio device frequency is specified in Hz;"
 	// "in modern times, 48000 is often a reasonable default."
@@ -520,6 +558,8 @@ int main(int argc, char **argv) {
 		uint64_t start_frame = SDL_GetTicks64();
 		uint64_t song_offset = start_frame - start_chart + audio_offset;
 
+		bool update_last_press = false;
+
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
 			switch (ev.type) {
@@ -535,9 +575,10 @@ int main(int argc, char **argv) {
 				if (col_index >= ch.last_press.size())
 					break;
 				ch.last_press[col_index] = song_offset;
+				update_last_press = true;
 				if (is_held) {
 					// eventually, this will have code aside from break; so don't move it
-					std::cout << "skipping held key\n";
+					//std::cout << "skipping held key\n";
 					break;
 				}
 				auto [found, delta] = ch.close_note(col, song_offset, strike_timespan);
@@ -571,8 +612,6 @@ int main(int argc, char **argv) {
 		// ch.draw populates ch.points and ch.indices
 		ch.draw(song_offset, song_offset + display_timespan);
 		// now comes the OpenGL stuff I half understand
-		// TODO: can any of this be called only once?
-		// (before the render loop)
 		glBindVertexArray(vao);
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
 		glBufferData(GL_ARRAY_BUFFER, sizeof(Point) * ch.points.size(), ch.points.data(), GL_DYNAMIC_DRAW);
@@ -589,6 +628,9 @@ int main(int argc, char **argv) {
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glUseProgram(postprocess_prog);
+		glUniform1ui(1, static_cast<uint32_t>(song_offset)); // sets uniform "now"
+		if (update_last_press)
+			glUniform1uiv(2, ch.last_press.size(), ch.last_press.data()); // sets uniform "times"
 		glBindVertexArray(scr_quad_vao);
 		glBindTexture(GL_TEXTURE_2D, cbuf_tex);
 		glDrawArrays(GL_TRIANGLES, 0, 6);

@@ -10,6 +10,7 @@ Beats is a rhythm game similar to Rhythm Plus. It's not done yet!
 * Textures for notes
 * A config file for keybindings etc.
 ## Stuff that has been done
+* Shaders!
 * Keybindings are modifiable, but the current values are hardcoded
 * Sound (some file formats are unsupported, like m4a; this is a limitation of SDL2\_mixer, so I may at some point move to an ffmpeg-based solution)
 * The class Chart supports up to 32 columns of notes (though the UI doesn't yet)
