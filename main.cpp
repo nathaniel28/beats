@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <string_view>
 #include <vector>
 
 #include <SDL2/SDL.h>
@@ -11,11 +12,7 @@
 #include <GL/glew.h>
 #include <GL/gl.h>
 
-// gonna need to wrap in OpenGL and freetype for font rendering...
-// https://github.com/rougier/freetype-gl/tree/master/demos
-
-// sdl resource:
-// https://sibras.github.io/OpenGL4-Tutorials/docs/Tutorials/01-Tutorial1
+#include "shaders/sources.h"
 
 // see https://stackoverflow.com/questions/32432450
 // thank you pmttavara!
@@ -218,7 +215,7 @@ struct KeyStates {
 	unsigned data[SDL_NUM_SCANCODES];
 	bool pressed[SDL_NUM_SCANCODES];
 
-	KeyStates() = default; // RAII, those arrays are initialized!
+	KeyStates() = default;
 
 	// sets the scancode to change and returns the previous value (true if the key is held)
 	bool set(int scancode, bool change);
@@ -232,11 +229,14 @@ bool KeyStates::set(int scancode, bool change) {
 	return res;
 }
 
-#define LOG_ERR() std::cerr << SDL_GetError() << '\n'
-
-#define ASSETS(a) "./assets/" a
-
-#define COLUMN(n) (1 << n)
+void log_shader_err(GLuint shader) {
+	GLchar log[256];
+	GLsizei log_len;
+	glGetShaderInfoLog(shader, sizeof(log), &log_len, log);
+	std::cout.write(log, log_len) << '\n';
+	if (log_len == sizeof(log))
+		std::cout << "\n(log truncated)\n";
+}
 
 GLuint load_shader(GLenum type, const GLchar *src, GLint len) {
 	GLuint shader = glCreateShader(type);
@@ -248,17 +248,15 @@ GLuint load_shader(GLenum type, const GLchar *src, GLint len) {
 	GLint status;
 	glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
 	if (status != GL_TRUE) {
-		GLchar log[256];
-		GLsizei log_len;
-		glGetShaderInfoLog(shader, sizeof(log), &log_len, log);
-		std::cout.write(log, log_len) << '\n';
+		std::cout.write(src, len) << '\n';
+		log_shader_err(shader);
 		glDeleteShader(shader);
 		return 0;
 	}
 	return shader;
 }
 
-GLuint create_program(const std::string &vtx_src, const std::string &frag_src) {
+GLuint create_program(const std::string_view vtx_src, const std::string_view frag_src) {
 	GLuint vtx_shader = load_shader(GL_VERTEX_SHADER, vtx_src.data(), vtx_src.size());
 	if (!vtx_shader)
 		return 0;
@@ -276,14 +274,16 @@ GLuint create_program(const std::string &vtx_src, const std::string &frag_src) {
 	GLint status;
 	glGetProgramiv(prog, GL_LINK_STATUS, &status);
 	if (status != GL_TRUE) {
-		GLchar log[256];
-		GLsizei log_len;
-		glGetShaderInfoLog(prog, sizeof(log), &log_len, log);
-		std::cout.write(log, log_len) << '\n';
+		log_shader_err(prog);
+		glDeleteProgram(prog); // pretty sure this doesn't call glDeleteShader on the shaders
 		return 0;
 	}
 	return prog;
 }
+
+#define ACT_COLUMN(n) (1 << n)
+#define MAX_COLUMN ACT_COLUMN(8)
+#define ACT_PAUSE (MAX_COLUMN + 1)
 
 int main(int argc, char **argv) {
 	if (argc != 2) {
@@ -306,63 +306,55 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
+	// set up SDL with the ability to use OpenGL
 	int err = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
 	if (err != 0) {
-		LOG_ERR();
+		std::cout << SDL_GetError() << '\n';
 		return -1;
 	}
 	defer { SDL_Quit(); };
-
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-
 	SDL_Window *win = SDL_CreateWindow("beats", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, ch.width(), ch.height(), SDL_WINDOW_OPENGL);
 	if (!win) {
-		LOG_ERR();
+		std::cout << SDL_GetError() << '\n';
 		return -1;
 	}
 	defer { SDL_DestroyWindow(win); };
-
 	SDL_GLContext gl_ctx = SDL_GL_CreateContext(win);
 	if (!gl_ctx) {
-		LOG_ERR();
+		std::cout << SDL_GetError() << '\n';
 		return -1;
 	}
 	defer { SDL_GL_DeleteContext(gl_ctx); };
-
-	// TODO: move the following to a init OpenGL function of some kind
-	GLenum gerr = glewInit(); // must be called after create context
+	GLenum gerr = glewInit(); // must be called after SDL_GL_CreateContext
 	if (gerr != GLEW_OK) {
 		std::cout << "failed to initialize GLEW: " << glewGetErrorString(gerr) << '\n';
 		return -1;
 	}
-	glViewport(0, 0, ch.width(), ch.height());
-	glClearColor(0.0, 0.0, 0.0, 1.0);
 
-	// TODO: move the following shader related stuff to another file
-	// all other shaders should live there too
-	//
-	// TODO: screen size is hardcoded, pass in as a uniform or find it out,
-	// without hardcoding it
-	// this shader converts pixel coordinates (as ints)
-	// to floats on the range [-1.0, 1.0] and colors them blue
-	GLuint note_prog = create_program(
-		"#version 460 core\n"
-		"layout(location = 0) in ivec2 pix;\n"
-		"void main() {\n"
-		"	vec2 norm = 2.0 * vec2(pix) / vec2(400, 600) - 1.0;\n"
-		"	gl_Position = vec4(norm, 0.0, 1.0);\n"
-		"}"
-		,
-		"#version 460 core\n"
-		"out vec4 frag_col;\n"
-		"void main() {\n"
-		"	frag_col = vec4(0.486, 0.729, 0.815, 1.0);\n"
-		"}"
-	);
+	// compile and link shaders (source code is stored as const char[],
+	// #included from shaders/sources.h, created with ./process_shaders.py)
+	// this shader converts pixel coordinates (as ints) to floats on
+	// the range [-1.0, 1.0]
+	GLuint note_prog = create_program(note_vert_src, note_frag_src);
 	if (!note_prog)
 		return -1;
+	defer { glDeleteProgram(note_prog); };
+	glUseProgram(note_prog);
+	glUniform2f(0, static_cast<float>(ch.width()), static_cast<float>(ch.height())); // sets uniform "scrSize"
+	glUniform3f(2, 0.486, 0.729, 0.815); // sets uniform "oColor"
+	// The following program makes the columns light up when you press them
+	GLuint postprocess_prog = create_program(highlight_vert_src, highlight_frag_src);
+	if (!postprocess_prog)
+		return -1;
+	defer { glDeleteProgram(postprocess_prog); };
+	glUseProgram(postprocess_prog);
+	glUniform1f(0, static_cast<float>(ch.total_columns())); // sets uniform "nCols"
+
+	glViewport(0, 0, ch.width(), ch.height());
+	glClearColor(0.0, 0.0, 0.0, 1.0);
 
 	GLuint vaos[2];
 	glGenVertexArrays(sizeof(vaos) / sizeof(*vaos), vaos);
@@ -425,73 +417,16 @@ int main(int argc, char **argv) {
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ch.width(), ch.height(), 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	//glBindTexture(GL_TEXTURE_2D, 0); // why unbind if we're gonna rebind it ever time we render? idk but tutorial says so
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cbuf_tex, 0);
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		std::cout << "failed to initialize framebuffer\n";
 		return -1;
 	}
-	glBindFramebuffer(GL_FRAMEBUFFER, 0); // I'm gonna need to go back and find out if all these unbinds are really required...
+	// no need to unbind the framebuffer since we bind each time we render
 
+	// that was a lot of OpenGL setup...
 
-	/*
-	vec3 rgb2hsv(vec3 c) {
-		const vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
-		vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
-		vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
-		float d = q.x - min(q.w, q.y);
-		const float e = 1.0e-10;
-		return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
-	}
-
-	vec3 hsv2rgb(vec3 c) {
-		const vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-		vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-		return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-	}
-	*/
-
-	GLuint postprocess_prog = create_program(
-		"#version 460 core\n"
-		"layout(location = 0) in vec2 aPos;\n"
-		"layout(location = 1) in vec2 aTexCoords;\n"
-		"out vec2 texCoords;\n"
-		"void main() {\n"
-		"	gl_Position = vec4(aPos, 0.0, 1.0);\n"
-		"	texCoords = aTexCoords;\n"
-		"}"
-		,
-		"#version 460 core\n"
-		"out vec4 fragColor;\n"
-		"in vec2 texCoords;\n"
-		"uniform sampler2D tex;\n"
-		"layout(location = 0) uniform float nCols;\n"
-		"layout(location = 1) uniform uint now;\n"
-		"layout(location = 2) uniform uint times[8];\n"
-		"void main() {\n"
-		"	uint t = now - times[int(texCoords.x * nCols)];\n"
-		"	vec3 col = texture(tex, texCoords).rgb;\n"
-		"	const uint flashDuration = 500;\n"
-		"	if (t < flashDuration) {\n"
-		"		vec3 flash;\n"
-		"		if (texCoords.y <= 0.2) {\n"
-		"			flash = mix(col, vec3(0.486, 0.729, 0.815), 2.0 * (0.2 - texCoords.y));\n"
-		"		} else {\n"
-		"			float x = 1.25 - 1.25 * texCoords.y;\n"
-		"			flash = mix(col, vec3(1.0), (1.0 - x * x) * 0.15);\n"
-		"		}\n"
-		"		col = mix(col, flash, 1.0 - float(t) / float(flashDuration));\n"
-		"	}\n"
-		"	fragColor = vec4(col, 1.0);\n"
-		"}"
-	);
-	if (!postprocess_prog)
-		return -1;
-	glUseProgram(postprocess_prog);
-	glUniform1f(0, static_cast<float>(ch.total_columns())); // setting uniform "nCols"
-
-	// okay, I'm gonna need a uniform buffer object to pass uniforms to my fragment shader
-
+	// set up audio
 	// "The audio device frequency is specified in Hz;"
 	// "in modern times, 48000 is often a reasonable default."
 	// -SDL2_mixer wiki
@@ -501,7 +436,6 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 	defer { Mix_CloseAudio(); };
-
 	char *c = argv[1];
 	char *last_dot = c;
 	while (*c) {
@@ -512,37 +446,40 @@ int main(int argc, char **argv) {
 	*last_dot = '\0';
 	Mix_Music *track = Mix_LoadMUS(argv[1]);
 	if (!track) {
-		LOG_ERR();
+		std::cout << SDL_GetError() << '\n';
 		return -1;
 	}
 	defer { Mix_FreeMusic(track); };
 
-	// keybindings
+	// keybindings; ks.data stores an action associated with the keypress
 	KeyStates ks;
-	ks.data[SDL_SCANCODE_D] = COLUMN(0);
-	ks.data[SDL_SCANCODE_F] = COLUMN(1);
-	ks.data[SDL_SCANCODE_J] = COLUMN(2);
-	ks.data[SDL_SCANCODE_K] = COLUMN(3);
-	ks.data[SDL_SCANCODE_L] = COLUMN(4);
+	ks.data[SDL_SCANCODE_D] = ACT_COLUMN(0);
+	ks.data[SDL_SCANCODE_F] = ACT_COLUMN(1);
+	ks.data[SDL_SCANCODE_J] = ACT_COLUMN(2);
+	ks.data[SDL_SCANCODE_K] = ACT_COLUMN(3);
+	ks.data[SDL_SCANCODE_L] = ACT_COLUMN(4);
+	ks.data[SDL_SCANCODE_SPACE] = ACT_PAUSE;
 
 	// the following 4 variables are times in milliseconds
 	uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
-	uint64_t display_timespan = 750; // notes at the top of the screen will be display_timespan ms in the future
+	uint64_t display_timespan = 650; // notes at the top of the screen will be display_timespan ms in the future
 	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
 	int64_t audio_offset = -25;
-
-	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // debug wireframe
 
 	SDL_RaiseWindow(win);
 	Mix_PlayMusic(track, 0);
 
+	bool chart_paused = false;
+	uint64_t pause_frame;
 	uint64_t start_chart = SDL_GetTicks64();
+	// finally, begin event and render loop
 	while (1) {
 		uint64_t start_frame = SDL_GetTicks64();
 		uint64_t song_offset = start_frame - start_chart + audio_offset;
 
 		bool update_last_press = false;
 
+		// oh boy, we're back to 7 levels of indentation!
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
 			switch (ev.type) {
@@ -551,10 +488,36 @@ int main(int argc, char **argv) {
 				// I need a new scope here because C++ throws a fit if you
 				// declare variables after a label without one
 				bool is_held = ks.set(ev.key.keysym.scancode, true);
-				unsigned col = ks.data[ev.key.keysym.scancode];
-				if (!col)
+				unsigned action = ks.data[ev.key.keysym.scancode];
+				if (!action)
 					break;
-				unsigned col_index = std::countr_zero(col);
+				if (action > MAX_COLUMN) {
+					// not a column press, so figure out what it is now
+					switch (action) {
+					case ACT_PAUSE:
+						if (chart_paused) {
+							start_chart += start_frame - pause_frame;
+							song_offset = start_frame - start_chart + audio_offset;
+							Mix_PauseAudio(0);
+							chart_paused = false;
+						} else {
+							pause_frame = start_frame;
+							Mix_PauseAudio(1);
+							chart_paused = true;
+						}
+						break;
+					default:
+						std::cerr << "unknown action " << action << '\n';
+						return -1;
+					}
+					break;
+				}
+				// now we know that action is a column press
+				// for a note; don't check for gameplay input
+				// when the game is paused!
+				if (chart_paused)
+					break;
+				unsigned col_index = std::countr_zero(action);
 				if (col_index >= ch.last_press.size())
 					break;
 				ch.last_press[col_index] = song_offset;
@@ -564,18 +527,18 @@ int main(int argc, char **argv) {
 					//std::cout << "skipping held key\n";
 					break;
 				}
-				auto [found, delta] = ch.close_note(col, song_offset, strike_timespan);
+				auto [found, delta] = ch.close_note(action, song_offset, strike_timespan);
 				if (found) {
-					uint64_t score = strike_timespan - delta;
 					/*
+					uint64_t score = strike_timespan - delta;
 					if (score > strike_timespan)
 						std::cout << "??? ";
 					else if (score > strike_timespan - strike_timespan / 8)
 						std::cout << "perfect ";
+					std::cout << score << '\n';
 					*/
-					//std::cout << score << '\n';
-					found->columns ^= col; // remove the note from its column to prevent it from being pressable and drawn
-					//std::cout << start_frame << ' ' << found->timestamp << '\n';
+					// remove the note from its column to prevent it from being pressable and drawn
+					found->columns ^= action;
 				} else {
 					//std::cout << "strike!\n";
 				}
@@ -589,34 +552,44 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-		glClear(GL_COLOR_BUFFER_BIT);
 
-		// ch.draw populates ch.points and ch.indices
-		ch.draw(song_offset, song_offset + display_timespan);
-		// now comes the OpenGL stuff I half understand
-		glBindVertexArray(vao);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(Point) * ch.points.size(), ch.points.data(), GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * ch.indices.size(), ch.indices.data(), GL_DYNAMIC_DRAW);
-		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0); // why does GL_FLOAT work but GL_INT doesn't, since I'm giving it ints
-		glEnableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0); // we don't need to do this if we make sure to bind buffers first, right?
+		if (chart_paused) {
+			// the framebuffer fbo's texture stores the last frame
+			// drawn; we can draw it repeatedly for a still image;
+			// then, we can draw the menu above it.
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glClear(GL_COLOR_BUFFER_BIT);
+			glUseProgram(postprocess_prog);
+			glBindVertexArray(scr_quad_vao);
+			glBindTexture(GL_TEXTURE_2D, cbuf_tex);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+		} else {
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+			glClear(GL_COLOR_BUFFER_BIT);
 
-		// more magic happens here
-		glUseProgram(note_prog);
-		glDrawElements(GL_TRIANGLES, ch.indices.size(), GL_UNSIGNED_INT, 0);
-		glBindVertexArray(0); // what's this for? resetting state? but I bind another array later...
+			// ch.draw populates ch.points and ch.indices
+			ch.draw(song_offset, song_offset + display_timespan);
+			// now comes the OpenGL stuff I half understand
+			glBindVertexArray(vao);
+			glBindBuffer(GL_ARRAY_BUFFER, vbo);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(Point) * ch.points.size(), ch.points.data(), GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * ch.indices.size(), ch.indices.data(), GL_DYNAMIC_DRAW);
+			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0); // why does GL_FLOAT work but GL_INT doesn't, since I'm giving it ints
+			glEnableVertexAttribArray(0);
+			glBindBuffer(GL_ARRAY_BUFFER, 0); // we don't need to do this if we make sure to bind buffers first, right?
+			glUseProgram(note_prog);
+			glDrawElements(GL_TRIANGLES, ch.indices.size(), GL_UNSIGNED_INT, 0);
 
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glUseProgram(postprocess_prog);
-		glUniform1ui(1, static_cast<uint32_t>(song_offset)); // sets uniform "now"
-		if (update_last_press)
-			glUniform1uiv(2, ch.last_press.size(), ch.last_press.data()); // sets uniform "times"
-		glBindVertexArray(scr_quad_vao);
-		glBindTexture(GL_TEXTURE_2D, cbuf_tex);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glUseProgram(postprocess_prog);
+			glUniform1ui(1, static_cast<uint32_t>(song_offset)); // sets uniform "now"
+			if (update_last_press)
+				glUniform1uiv(2, ch.last_press.size(), ch.last_press.data()); // sets uniform "times"
+			glBindVertexArray(scr_quad_vao);
+			glBindTexture(GL_TEXTURE_2D, cbuf_tex);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+		}
 
 		SDL_GL_SwapWindow(win);
 

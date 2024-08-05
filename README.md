@@ -8,6 +8,7 @@ Beats is a rhythm game similar to Rhythm Plus. It's not done yet!
 * Charts and the accompanying music are kept in different files; I need a better method of finding the music given a chart as the current solution is just looking for foo given the chart foo.chart
 * Textures for notes
 * A config file for keybindings etc.
+* Clean up the code! This is difficult because OpenGL is a giant state machine, and doesn't abstract into nice classes very easily. I think helper functions are the way to go, but since they all need to access a million variables, keeping all the mess in one scope is convenient, and I don't see a state struct helping at all.
 ## Stuff that has been done
 * Shaders!
 * Keybindings are modifiable, but the current values are hardcoded
@@ -18,8 +19,12 @@ Beats is a rhythm game similar to Rhythm Plus. It's not done yet!
 * Keypresses are scored by how close you got to the next note
 * You can import charts from Rhythm Plus by using converter.py on the chart JSON found via a GET request to https://api.rhythm-plus.com/api/v1/sheet/get?sheetId= [your sheet id here]. Use the network tab of your browser's console to find this request. I might eventually get around to making a tool that does this automatically...
 ## Compiling
-Run `make`.
+For the first time, run `make all`.
+
+Run `make shaders.h` if you update any of shaders/*
 
 You need development libraries for SDL, SDL\_image, SDL\_mixer, OpenGL, and GLEW.
 
-You will probably need freetype in the future.
+You will probably need Dear ImGui in the future.
+## In defense of the code...
+*This section intentionally left blank.*
