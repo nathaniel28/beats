@@ -44,8 +44,8 @@ struct Note {
 class Chart {
 public:
 	std::vector<Point> points; // points of rectangles to draw notes
-	std::vector<uint32_t> last_press; // last press of a column, millisecond offset from song start, u32 for GLSL
 	std::vector<uint32_t> indices; // indices for the EBO to help draw points
+	std::vector<uint32_t> last_press; // last press of a column, millisecond offset from song start, u32 for GLSL
 private:
 	std::vector<Note> notes;
 	unsigned note_index; // keep track of what note to start drawing from
@@ -85,7 +85,7 @@ public:
 	int total_columns();
 };
 
-Chart::Chart(uint32_t col_height, uint32_t note_width_, uint32_t note_height_) : points(512), last_press(0), indices(768), notes(0) {
+Chart::Chart(uint32_t col_height, uint32_t note_width_, uint32_t note_height_) : points(512), indices(768), last_press(0), notes(0) {
 	column_height = col_height + note_height_;
 	note_width = note_width_;
 	note_height = note_height_;
@@ -142,7 +142,6 @@ void Chart::draw(uint64_t t0, uint64_t t1) {
 	points.clear(); // does not deallocate memory, though
 	indices.clear(); // ditto
 	unsigned i = note_index;
-	//std::cerr << t0 << ' ' << t1 << ' ' << i << '\n';
 	unsigned max = notes.size();
 	while (i < max && notes[i].timestamp < t1) {
 		if (notes[i].timestamp < t0) {
@@ -150,7 +149,7 @@ void Chart::draw(uint64_t t0, uint64_t t1) {
 				//std::cout << "miss!\n";
 			}
 			// we can do this because notes are kept ordered by time
-			note_index++; // next time, don't bother with this note
+			note_index = i; // next time, don't bother with notes before this
 		} else {
 			int total_cols = total_columns();
 			for (int j = 0; j < total_cols; j++) {
@@ -285,23 +284,6 @@ GLuint create_program(const std::string &vtx_src, const std::string &frag_src) {
 	}
 	return prog;
 }
-
-// verdict: too evil, probably doesn't work
-/*
-template <class Gen, typename... Fill>
-bool gen_objects(Gen gen, Fill&... args) {
-	using FT = std::common_type_t<Fill...>;
-	std::array<FT, sizeof...(Fill)> buf;
-	gen(sizeof...(Fill), buf.data());
-	unsigned i = 0;
-	bool err = false;
-	([&]() {
-		args = buf[i++];
-		err |= !args;
-	}, ...);
-	return err;
-}
-*/
 
 int main(int argc, char **argv) {
 	if (argc != 2) {
@@ -535,6 +517,7 @@ int main(int argc, char **argv) {
 	}
 	defer { Mix_FreeMusic(track); };
 
+	// keybindings
 	KeyStates ks;
 	ks.data[SDL_SCANCODE_D] = COLUMN(0);
 	ks.data[SDL_SCANCODE_F] = COLUMN(1);

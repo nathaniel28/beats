@@ -2,7 +2,6 @@
 Beats is a rhythm game similar to Rhythm Plus. It's not done yet!
 ## Stuff that still needs to be done
 * Hold notes!
-* Fix the rare (but consistent) bug where pressing a key once consumes two notes
 * Text rendering for score and such (more complicated than I though, likely via freetype)
 * A pause menu to change note scroll speed, and audio/note offset, song selection...
 * Support for more audio file formats
