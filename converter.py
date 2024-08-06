@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 # under GPL-2.0
 
 import ctypes

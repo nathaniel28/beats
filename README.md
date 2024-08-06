@@ -1,10 +1,9 @@
 # Beats
 Beats is a rhythm game similar to Rhythm Plus. It's not done yet!
 ## Stuff that still needs to be done
+* get a better library for playing sound
 * Hold notes!
-* Text rendering for score and such (more complicated than I though, likely via freetype)
 * A pause menu to change note scroll speed, and audio/note offset, song selection...
-* Support for more audio file formats
 * Charts and the accompanying music are kept in different files; I need a better method of finding the music given a chart as the current solution is just looking for foo given the chart foo.chart
 * Textures for notes
 * A config file for keybindings etc.
@@ -12,7 +11,7 @@ Beats is a rhythm game similar to Rhythm Plus. It's not done yet!
 ## Stuff that has been done
 * Shaders!
 * Keybindings are modifiable, but the current values are hardcoded
-* Sound (some file formats are unsupported, like m4a; this is a limitation of SDL2\_mixer, so I may at some point move to an ffmpeg-based solution)
+* Sound
 * The class Chart supports up to 32 columns of notes (though the UI doesn't yet)
 * The speed at which notes fall can be adjusted (though the value is hardcoded)
 * The audio/note offset can be adjusted (though the value is also hardcoded)
@@ -23,7 +22,7 @@ For the first time, run `make all`.
 
 Run `make shaders.h` if you update any of shaders/*
 
-You need development libraries for SDL, SDL\_image, SDL\_mixer, OpenGL, and GLEW.
+You need development libraries for SDL, OpenGL, GLEW, and libVLC (don't forget the C++ bindings).
 
 You will probably need Dear ImGui in the future.
 ## In defense of the code...

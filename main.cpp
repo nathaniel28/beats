@@ -4,13 +4,14 @@
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <string_view>
 #include <vector>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_mixer.h>
 #include <GL/glew.h>
 #include <GL/gl.h>
+#include <vlcpp/vlc.hpp>
 
 #include "shaders/sources.h"
 
@@ -334,6 +335,22 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
+	char *c = argv[1];
+	char *last_dot = c;
+	while (*c) {
+		if (*c == '.')
+			last_dot = c;
+		c++;
+	}
+	*last_dot = '\0';
+	// setup libVLC
+	VLC::Instance vlci(0, nullptr);
+	VLC::Media media(vlci, argv[1], VLC::Media::FromPath);
+	// I've tried Media::state to find out if it couldn't open the file...
+	// but it returns 0 if the file exists or not, so TODO figure out how
+	// to handle errors
+	VLC::MediaPlayer mp(media);
+
 	// compile and link shaders (source code is stored as const char[],
 	// #included from shaders/sources.h, created with ./process_shaders.py)
 	// this shader converts pixel coordinates (as ints) to floats on
@@ -426,31 +443,6 @@ int main(int argc, char **argv) {
 
 	// that was a lot of OpenGL setup...
 
-	// set up audio
-	// "The audio device frequency is specified in Hz;"
-	// "in modern times, 48000 is often a reasonable default."
-	// -SDL2_mixer wiki
-	err = Mix_OpenAudio(48000, AUDIO_F32SYS, 2, 4096);
-	if (err != 0) {
-		std::cerr << "failed to initialize audio\n";
-		return -1;
-	}
-	defer { Mix_CloseAudio(); };
-	char *c = argv[1];
-	char *last_dot = c;
-	while (*c) {
-		if (*c == '.')
-			last_dot = c;
-		c++;
-	}
-	*last_dot = '\0';
-	Mix_Music *track = Mix_LoadMUS(argv[1]);
-	if (!track) {
-		std::cout << SDL_GetError() << '\n';
-		return -1;
-	}
-	defer { Mix_FreeMusic(track); };
-
 	// keybindings; ks.data stores an action associated with the keypress
 	KeyStates ks;
 	ks.data[SDL_SCANCODE_D] = ACT_COLUMN(0);
@@ -467,7 +459,7 @@ int main(int argc, char **argv) {
 	int64_t audio_offset = -25;
 
 	SDL_RaiseWindow(win);
-	Mix_PlayMusic(track, 0);
+	mp.play();
 
 	bool chart_paused = false;
 	uint64_t pause_frame;
@@ -498,11 +490,15 @@ int main(int argc, char **argv) {
 						if (chart_paused) {
 							start_chart += start_frame - pause_frame;
 							song_offset = start_frame - start_chart + audio_offset;
-							Mix_PauseAudio(0);
 							chart_paused = false;
+							// possibly use setTime to re-sync the song
+							// this seems unnecessary from my testing,
+							// however.
+							//mp.setTime();
+							mp.play();
 						} else {
+							mp.pause();
 							pause_frame = start_frame;
-							Mix_PauseAudio(1);
 							chart_paused = true;
 						}
 						break;
