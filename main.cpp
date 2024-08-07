@@ -34,27 +34,115 @@ struct Point {
 };
 
 struct Note {
-	uint64_t timestamp; // in milliseconds
-	//uint32_t hold_duration;
+	uint32_t timestamp; // in milliseconds
 	uint32_t hold_duration; // 0 for a press
-	uint32_t columns; // a bitmask; the nth bit is set if the nth column is used, as the player hits a present column, the column is xor'd away, leaving the others columns untouched
+	bool active; // whether or not to consider the note needing to be pressed
 };
+
+class Column {
+public:
+	std::vector<Note> notes;
+private:
+	int note_index;
+public:
+	Column();
+
+	void emit_verts(int64_t t0, int64_t t1, int column_height, int note_width, int note_height, int column_offset, std::vector<Point> &points, std::vector<uint32_t> &indices);
+
+	std::pair<Note *, uint64_t> close_note(uint64_t time, uint64_t threshhold);
+
+	//void reset();
+};
+
+Column::Column() : notes(0) {
+	note_index = 0;
+}
+
+void Column::emit_verts(int64_t t0, int64_t t1, int column_height, int note_width, int note_height, int column_offset, std::vector<Point> &points, std::vector<uint32_t> &indices) {
+	int i = note_index;
+	int max = notes.size();
+	while (i < max && static_cast<int64_t>(notes[i].timestamp) < t1) {
+		if (static_cast<int64_t>(notes[i].timestamp + notes[i].hold_duration) < t0) {
+			if (notes[i].active) {
+				//std::cout << "miss!\n";
+			}
+			// we can do this because notes are kept ordered by time
+			note_index = i; // next time, don't bother with notes before this
+		} else if (notes[i].active) {
+			const int32_t x0 = note_width * column_offset;
+			const int32_t x1 = x0 + note_width;
+			const int32_t y1 = ((column_height * (static_cast<int64_t>(notes[i].timestamp) - t0)) / (t1 - t0));
+			const int32_t y0 = y1 + note_height + notes[i].hold_duration;
+			const uint32_t sz = points.size();
+			indices.emplace(indices.end(), sz + 0);
+			indices.emplace(indices.end(), sz + 1);
+			indices.emplace(indices.end(), sz + 2);
+			indices.emplace(indices.end(), sz + 0);
+			indices.emplace(indices.end(), sz + 2);
+			indices.emplace(indices.end(), sz + 3);
+			points.emplace(points.end(), x0, y0);
+			points.emplace(points.end(), x0, y1);
+			points.emplace(points.end(), x1, y1);
+			points.emplace(points.end(), x1, y0);
+		}
+		i++;
+	}
+}
+
+std::pair<Note *, uint64_t> Column::close_note(uint64_t time, uint64_t threshhold) {
+	int i = note_index;
+	int max = notes.size();
+	Note *upper = nullptr;
+	uint64_t upper_delta_t = 0;
+	while (i < max && notes[i].timestamp < time + threshhold) {
+		if (notes[i].active) {
+			upper = &notes[i];
+			upper_delta_t = upper->timestamp - time;
+			break;
+		}
+		i++;
+	}
+	i = note_index;
+	while (i > 0 && notes[i].timestamp > time - threshhold) {
+		if (notes[i].active) {
+			uint64_t lower_delta_t = time - notes[i].timestamp;
+			if (!upper || upper_delta_t > lower_delta_t)
+				return {&notes[i], lower_delta_t};
+			break;
+		}
+		i--;
+	}
+	return {upper, upper_delta_t}; // possibly {nullptr, 0}
+}
+
+#define ACT_NONE 0
+#define ACT_COLUMN(n) (n + 1)
+#define COLUMN_ACT_INDEX(n) (n - 1)
+#define MAX_COLUMN 8
+#define ACT_PAUSE (MAX_COLUMN + 1)
 
 class Chart {
 public:
+	/*
+	enum class ParseErr {
+		None,
+		Magic,
+		Version,
+		General
+	};
+	*/
 	std::vector<Point> points; // points of rectangles to draw notes
 	std::vector<uint32_t> indices; // indices for the EBO to help draw points
 	std::vector<uint32_t> last_press; // last press of a column, millisecond offset from song start, u32 for GLSL
 private:
-	std::vector<Note> notes;
-	unsigned note_index; // keep track of what note to start drawing from
-	uint32_t column_height;
-	uint32_t note_width;
-	uint32_t note_height;
+	std::vector<Column> columns;
+	int column_height;
+	int note_width;
+	int note_height;
 
 	// file signature
 	static const uint64_t magic = 0xF1E0007472616863;
-	static const uint64_t version = 1;
+	static const uint32_t version = 2;
 
 public:
 	// calling the constructor does not make a Chart ready to use.
@@ -75,7 +163,7 @@ public:
 	// between time and that note's timestamp, where column is the offset of
 	// the column to look for notes in, and threshhold is how far in the
 	// past/future to search
-	std::pair<Note *, uint64_t> close_note(unsigned column, uint64_t time, uint64_t threshhold);
+	std::pair<Note *, uint64_t> close_note(int column, uint64_t time, uint64_t threshhold);
 
 	int width();
 
@@ -84,123 +172,88 @@ public:
 	int total_columns();
 };
 
-Chart::Chart(uint32_t col_height, uint32_t note_width_, uint32_t note_height_) : points(512), indices(768), last_press(0), notes(0) {
+Chart::Chart(uint32_t col_height, uint32_t note_width_, uint32_t note_height_) : points(512), indices(768), last_press(0), columns(0) {
 	column_height = col_height + note_height_;
 	note_width = note_width_;
 	note_height = note_height_;
-	note_index = 0;
 }
 
 #define READ(stream, dat, sz) stream.read(reinterpret_cast<char *>(dat), sz)
 
 // expects a file with the following format:
-// magic (8 bytes), version (4 bytes), note count (4 bytes)
-// followed by note count number of
-// timestamp (8 bytes), columns (4 bytes)
+// magic (8 bytes), version (4 bytes), column count (4 bytes)
+// followed by column count number of
+//   column index (4 bytes), note count (4 bytes)
+//   followed by note count number of
+//     timestamp (4 bytes), hold duration (4 bytes)
 int Chart::deserialize(std::istream &is) {
-	int total_cols = 0;
 	is.exceptions(std::ostream::failbit | std::ostream::badbit);
 	try {
 		// eventually, use endian.h to be extra standard, but for now,
 		// assume little endian
-		union {
-			uint64_t u_64;
-			uint32_t u_32;
-		} tmp;
-		READ(is, &tmp.u_64, sizeof(tmp.u_64));
-		if (tmp.u_64 != Chart::magic)
+		struct {
+			uint64_t magic;
+			uint32_t version;
+			uint32_t column_count;
+		} header; // better be packed right!
+		READ(is, &header, sizeof(header));
+		if (header.magic != Chart::magic) {
+			std::cerr << "invalid magic " << header.magic << '\n';
 			return -1;
-		READ(is, &tmp.u_32, sizeof(tmp.u_32));
-		if (tmp.u_32 != Chart::version)
+		}
+		if (header.version != Chart::version) {
+			std::cerr << "invalid version " << header.version << '\n';
 			return -1;
-		READ(is, &tmp.u_32, sizeof(tmp.u_32));
-		notes.resize(tmp.u_32); // maybe use reserve instead?
-		uint64_t last_timestamp = 0;
-		for (unsigned i = 0; i < tmp.u_32; i++) {
-			Note n;
-			READ(is, &n.timestamp, sizeof(n.timestamp));
-			if (n.timestamp < last_timestamp)
+		}
+		if (header.column_count >= MAX_COLUMN) {
+			std::cerr << header.column_count << " is too many columns\n";
+			return -1;
+		}
+		columns.resize(header.column_count);
+		last_press.resize(header.column_count);
+
+		for (uint32_t i = 0; i < header.column_count; i++) {
+			uint32_t column_index;
+			READ(is, &column_index, sizeof(column_index));
+			if (column_index >= header.column_count) {
+				std::cerr << "column index " << column_index << " out of range " << header.column_count << '\n';
 				return -1;
-			last_timestamp = n.timestamp;
-			READ(is, &n.hold_duration, sizeof(n.hold_duration)); // TODO more here
-			READ(is, &n.columns, sizeof(n.columns));
-			if (n.columns == 0)
-				return -1;
-			int max_column = 8 * sizeof(uint32_t) - std::countl_zero<uint32_t>(n.columns); // index of the last 1 in n.columns
-			if (max_column > total_cols)
-				total_cols = max_column;
-			notes[i] = n;
+			}
+			uint32_t note_count;
+			READ(is, &note_count, sizeof(note_count));
+			columns[column_index].notes.resize(note_count);
+
+			uint32_t last_timestamp = 0;
+			Note *n = &columns[column_index].notes[0];
+			while (note_count--) {
+				READ(is, &n->timestamp, sizeof(n->timestamp));
+				if (n->timestamp < last_timestamp) {
+					std::cerr << "unordered timestamps\n";
+					return -1;
+				}
+				READ(is, &n->hold_duration, sizeof(n->hold_duration));
+				n->active = true;
+				last_timestamp = n->timestamp + n->hold_duration;
+				n++;
+			}
 		}
 	} catch (const std::ios_base::failure &err) {
 		return err.code().value();
 	}
-	last_press.resize(total_cols); // resize default initializes new elements
 	return 0;
 }
 
 void Chart::draw(int64_t t0, int64_t t1) {
 	points.clear(); // does not deallocate memory, though
 	indices.clear(); // ditto
-	int i = note_index;
-	int max = notes.size();
-	while (i < max && static_cast<int64_t>(notes[i].timestamp) < t1) {
-		if (static_cast<int64_t>(notes[i].timestamp + notes[i].hold_duration) < t0) {
-			if (notes[i].columns) {
-				//std::cout << "miss!\n";
-			}
-			// FIXME: disabled temporarily
-			// we can do this because notes are kept ordered by time
-			note_index = i; // next time, don't bother with notes before this
-		} else {
-			int total_cols = total_columns();
-			for (int j = 0; j < total_cols; j++) {
-				if (!((notes[i].columns >> j) & 1))
-					continue;
-				const int32_t x0 = note_width * j;
-				const int32_t x1 = x0 + note_width;
-				const int32_t y1 = ((column_height * (static_cast<int64_t>(notes[i].timestamp) - t0)) / (t1 - t0));
-				const int32_t y0 = y1 + note_height + notes[i].hold_duration;
-				const uint32_t sz = points.size();
-				indices.emplace(indices.end(), sz + 0);
-				indices.emplace(indices.end(), sz + 1);
-				indices.emplace(indices.end(), sz + 2);
-				indices.emplace(indices.end(), sz + 0);
-				indices.emplace(indices.end(), sz + 2);
-				indices.emplace(indices.end(), sz + 3);
-				points.emplace(points.end(), x0, y0);
-				points.emplace(points.end(), x0, y1);
-				points.emplace(points.end(), x1, y1);
-				points.emplace(points.end(), x1, y0);
-			}
-		}
-		i++;
+	int sz = columns.size();
+	for (int i = 0; i < sz; i++) {
+		columns[i].emit_verts(t0, t1, column_height, note_width, note_height, i, points, indices);
 	}
 }
 
-std::pair<Note *, uint64_t> Chart::close_note(unsigned column, uint64_t time, uint64_t threshhold) {
-	unsigned i = note_index;
-	unsigned max = notes.size();
-	Note *upper = nullptr;
-	uint64_t upper_delta_t = 0;
-	while (i < max && notes[i].timestamp < time + threshhold) {
-		if (notes[i].columns & column) {
-			upper = &notes[i];
-			upper_delta_t = upper->timestamp - time;
-			break;
-		}
-		i++;
-	}
-	i = note_index;
-	while (i > 0 && notes[i].timestamp > time - threshhold) {
-		if (notes[i].columns & column) {
-			uint64_t lower_delta_t = time - notes[i].timestamp;
-			if (!upper || upper_delta_t > lower_delta_t)
-				return {&notes[i], lower_delta_t};
-			break;
-		}
-		i--;
-	}
-	return {upper, upper_delta_t}; // possibly {nullptr, 0}
+std::pair<Note *, uint64_t> Chart::close_note(int column, uint64_t time, uint64_t threshhold) {
+	return columns[column].close_note(time, threshhold);
 }
 
 int Chart::width() {
@@ -212,11 +265,11 @@ int Chart::height() {
 }
 
 int Chart::total_columns() {
-	return last_press.capacity();
+	return columns.size();
 }
 
 struct KeyStates {
-	unsigned data[SDL_NUM_SCANCODES];
+	int data[SDL_NUM_SCANCODES];
 	bool pressed[SDL_NUM_SCANCODES];
 
 	KeyStates() = default;
@@ -284,10 +337,6 @@ GLuint create_program(const std::string_view vtx_src, const std::string_view fra
 	}
 	return prog;
 }
-
-#define ACT_COLUMN(n) (1 << n)
-#define MAX_COLUMN ACT_COLUMN(8)
-#define ACT_PAUSE (MAX_COLUMN + 1)
 
 int main(int argc, char **argv) {
 	if (argc != 2) {
@@ -484,7 +533,7 @@ int main(int argc, char **argv) {
 				// declare variables after a label without one
 				bool is_held = ks.set(ev.key.keysym.scancode, true);
 				unsigned action = ks.data[ev.key.keysym.scancode];
-				if (!action)
+				if (action == ACT_NONE)
 					break;
 				if (action > MAX_COLUMN) {
 					// not a column press, so figure out what it is now
@@ -512,21 +561,19 @@ int main(int argc, char **argv) {
 					break;
 				}
 				// now we know that action is a column press
-				// for a note; don't check for gameplay input
-				// when the game is paused!
-				if (chart_paused)
+				// for a note; but don't check for gameplay
+				// input when the game is paused!
+				int column_index = COLUMN_ACT_INDEX(action);
+				if (chart_paused || column_index >= ch.total_columns())
 					break;
-				unsigned col_index = std::countr_zero(action);
-				if (col_index >= ch.last_press.size())
-					break;
-				ch.last_press[col_index] = song_offset;
+				ch.last_press[column_index] = song_offset;
 				update_last_press = true;
 				if (is_held) {
 					// eventually, this will have code aside from break; so don't move it
 					//std::cout << "skipping held key\n";
 					break;
 				}
-				auto [found, delta] = ch.close_note(action, song_offset, strike_timespan);
+				auto [found, delta] = ch.close_note(column_index, song_offset, strike_timespan);
 				if (found) {
 					/*
 					uint64_t score = strike_timespan - delta;
@@ -536,10 +583,9 @@ int main(int argc, char **argv) {
 						std::cout << "perfect ";
 					std::cout << score << '\n';
 					*/
-					// remove the note from its column to prevent it from being pressable and drawn
-					found->columns ^= action;
+					found->active = false;
 				} else {
-					//std::cout << "strike!\n";
+					std::cout << "strike!\n";
 				}
 				break;
 			}
