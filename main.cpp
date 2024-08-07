@@ -36,6 +36,7 @@ struct Point {
 struct Note {
 	uint64_t timestamp; // in milliseconds
 	//uint32_t hold_duration;
+	uint32_t hold_duration; // 0 for a press
 	uint32_t columns; // a bitmask; the nth bit is set if the nth column is used, as the player hits a present column, the column is xor'd away, leaving the others columns untouched
 };
 
@@ -53,7 +54,7 @@ private:
 
 	// file signature
 	static const uint64_t magic = 0xF1E0007472616863;
-	static const uint64_t version = 0;
+	static const uint64_t version = 1;
 
 public:
 	// calling the constructor does not make a Chart ready to use.
@@ -68,7 +69,7 @@ public:
 
 	// draw the notes from t0 to t1, also updates note_index
 	// future calls should be made with a greater t0 and t1
-	void draw(uint64_t t0, uint64_t t1);
+	void draw(int64_t t0, int64_t t1);
 
 	// returns the closest *unpressed* note and the absolute time difference
 	// between time and that note's timestamp, where column is the offset of
@@ -121,6 +122,7 @@ int Chart::deserialize(std::istream &is) {
 			if (n.timestamp < last_timestamp)
 				return -1;
 			last_timestamp = n.timestamp;
+			READ(is, &n.hold_duration, sizeof(n.hold_duration)); // TODO more here
 			READ(is, &n.columns, sizeof(n.columns));
 			if (n.columns == 0)
 				return -1;
@@ -136,16 +138,17 @@ int Chart::deserialize(std::istream &is) {
 	return 0;
 }
 
-void Chart::draw(uint64_t t0, uint64_t t1) {
+void Chart::draw(int64_t t0, int64_t t1) {
 	points.clear(); // does not deallocate memory, though
 	indices.clear(); // ditto
-	unsigned i = note_index;
-	unsigned max = notes.size();
-	while (i < max && notes[i].timestamp < t1) {
-		if (notes[i].timestamp < t0) {
+	int i = note_index;
+	int max = notes.size();
+	while (i < max && static_cast<int64_t>(notes[i].timestamp) < t1) {
+		if (static_cast<int64_t>(notes[i].timestamp + notes[i].hold_duration) < t0) {
 			if (notes[i].columns) {
 				//std::cout << "miss!\n";
 			}
+			// FIXME: disabled temporarily
 			// we can do this because notes are kept ordered by time
 			note_index = i; // next time, don't bother with notes before this
 		} else {
@@ -155,8 +158,8 @@ void Chart::draw(uint64_t t0, uint64_t t1) {
 					continue;
 				const int32_t x0 = note_width * j;
 				const int32_t x1 = x0 + note_width;
-				const int32_t y1 = ((column_height * (notes[i].timestamp - t0)) / (t1 - t0));
-				const int32_t y0 = static_cast<int32_t>(note_height) < y1 ? y1 - note_height : 0;
+				const int32_t y1 = ((column_height * (static_cast<int64_t>(notes[i].timestamp) - t0)) / (t1 - t0));
+				const int32_t y0 = y1 + note_height + notes[i].hold_duration;
 				const uint32_t sz = points.size();
 				indices.emplace(indices.end(), sz + 0);
 				indices.emplace(indices.end(), sz + 1);
@@ -380,7 +383,7 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 	defer { glDeleteVertexArrays(sizeof(vaos) / sizeof(*vaos), vaos); };
-	const GLuint vao = vaos[0];
+	const GLuint note_vao = vaos[0];
 	const GLuint scr_quad_vao = vaos[1];
 	GLuint buffers[3];
 	glGenBuffers(sizeof(buffers) / sizeof(*buffers), buffers);
@@ -389,8 +392,8 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 	defer { glDeleteBuffers(sizeof(buffers) / sizeof(*buffers), buffers); };
-	const GLuint vbo = buffers[0];
-	const GLuint ebo = buffers[1];
+	const GLuint note_vbo = buffers[0];
+	const GLuint note_ebo = buffers[1];
 	const GLuint scr_quad_vbo = buffers[2];
 
 	// we need a quad to fill the whole screen in order to draw a post-processed texture
@@ -566,10 +569,10 @@ int main(int argc, char **argv) {
 			// ch.draw populates ch.points and ch.indices
 			ch.draw(song_offset, song_offset + display_timespan);
 			// now comes the OpenGL stuff I half understand
-			glBindVertexArray(vao);
-			glBindBuffer(GL_ARRAY_BUFFER, vbo);
+			glBindVertexArray(note_vao);
+			glBindBuffer(GL_ARRAY_BUFFER, note_vbo);
 			glBufferData(GL_ARRAY_BUFFER, sizeof(Point) * ch.points.size(), ch.points.data(), GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, note_ebo);
 			glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * ch.indices.size(), ch.indices.data(), GL_DYNAMIC_DRAW);
 			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0); // why does GL_FLOAT work but GL_INT doesn't, since I'm giving it ints
 			glEnableVertexAttribArray(0);
