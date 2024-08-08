@@ -145,9 +145,9 @@ private:
 	static const uint32_t version = 2;
 
 public:
-	// calling the constructor does not make a Chart ready to use.
+	// calling the constructor does not make a Chart ready to use. (sorry)
 	// you must call deserialize next
-	Chart(uint32_t col_height, uint32_t note_width, uint32_t note_height);
+	Chart(uint32_t col_height, uint32_t note_width_, uint32_t note_height_);
 
 	// on success this function returns 0 and this Chart is safe to use
 	// calls istream::exceptions
@@ -157,7 +157,7 @@ public:
 
 	// draw the notes from t0 to t1, also updates note_index
 	// future calls should be made with a greater t0 and t1
-	void draw(int64_t t0, int64_t t1);
+	void draw(int64_t t0, int64_t t1, GLuint vao, GLuint vbo, GLuint ebo);
 
 	// returns the closest *unpressed* note and the absolute time difference
 	// between time and that note's timestamp, where column is the offset of
@@ -243,13 +243,21 @@ int Chart::deserialize(std::istream &is) {
 	return 0;
 }
 
-void Chart::draw(int64_t t0, int64_t t1) {
+void Chart::draw(int64_t t0, int64_t t1, GLuint vao, GLuint vbo, GLuint ebo) {
 	points.clear(); // does not deallocate memory, though
 	indices.clear(); // ditto
 	int sz = columns.size();
 	for (int i = 0; i < sz; i++) {
 		columns[i].emit_verts(t0, t1, column_height, note_width, note_height, i, points, indices);
 	}
+	glBindVertexArray(vao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(Point) * points.size(), points.data(), GL_DYNAMIC_DRAW);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * indices.size(), indices.data(), GL_DYNAMIC_DRAW);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0); // why does GL_FLOAT work but GL_INT doesn't, since I'm giving it ints
+	glEnableVertexAttribArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 std::pair<Note *, uint64_t> Chart::close_note(int column, uint64_t time, uint64_t threshhold) {
@@ -338,6 +346,7 @@ GLuint create_program(const std::string_view vtx_src, const std::string_view fra
 	return prog;
 }
 
+// behold the magnificent 300+ line main function
 int main(int argc, char **argv) {
 	if (argc != 2) {
 		const char *name = argv[0]; // the last element of argv is null
@@ -350,7 +359,7 @@ int main(int argc, char **argv) {
 	std::fstream in;
 	in.open(argv[1]);
 	if (!in.is_open()) {
-		std::cout << "failed to open file\n";
+		std::cout << "failed to open chart file\n";
 		return -1;
 	}
 	Chart ch(600, 100, 8);
@@ -358,6 +367,7 @@ int main(int argc, char **argv) {
 		std::cout << "failed to deserialize file\n";
 		return -1;
 	}
+	in.close();
 
 	// set up SDL with the ability to use OpenGL
 	int err = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
@@ -396,6 +406,10 @@ int main(int argc, char **argv) {
 	}
 	*last_dot = '\0';
 	// setup libVLC
+	// VLC either has a race condition or I'm not destroying something
+	// properly because sometimes on exit there is a use after free
+	// in some VLC clean up functions... Either way, it's not a priority
+	// for me to fix because it only happens on program exit ¯\_(ツ)_/¯
 	VLC::Instance vlci(0, nullptr);
 	VLC::Media media(vlci, argv[1], VLC::Media::FromPath);
 	// I've tried Media::state to find out if it couldn't open the file...
@@ -629,17 +643,7 @@ int main(int argc, char **argv) {
 			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			glClear(GL_COLOR_BUFFER_BIT);
 
-			// ch.draw populates ch.points and ch.indices
-			ch.draw(song_offset, song_offset + display_timespan);
-			// now comes the OpenGL stuff I half understand
-			glBindVertexArray(note_vao);
-			glBindBuffer(GL_ARRAY_BUFFER, note_vbo);
-			glBufferData(GL_ARRAY_BUFFER, sizeof(Point) * ch.points.size(), ch.points.data(), GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, note_ebo);
-			glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * ch.indices.size(), ch.indices.data(), GL_DYNAMIC_DRAW);
-			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0); // why does GL_FLOAT work but GL_INT doesn't, since I'm giving it ints
-			glEnableVertexAttribArray(0);
-			glBindBuffer(GL_ARRAY_BUFFER, 0); // we don't need to do this if we make sure to bind buffers first, right?
+			ch.draw(song_offset, song_offset + display_timespan, note_vao, note_vbo, note_ebo);
 			glUseProgram(note_prog);
 			glDrawElements(GL_TRIANGLES, ch.indices.size(), GL_UNSIGNED_INT, 0);
 
