@@ -8,7 +8,7 @@ layout(location = 2) uniform uint times[8];
 void main() {
 	uint t = now - times[int(texCoords.x * nCols)];
 	vec3 col = texture(tex, texCoords).rgb;
-	const uint flashDuration = 500;
+	const uint flashDuration = 250;
 	if (t < flashDuration) {
 		vec3 flash;
 		if (texCoords.y <= 0.2) {

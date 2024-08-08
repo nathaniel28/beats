@@ -268,17 +268,17 @@ int Chart::total_columns() {
 	return columns.size();
 }
 
-struct KeyStates {
-	int data[SDL_NUM_SCANCODES];
-	bool pressed[SDL_NUM_SCANCODES];
+struct Keystates {
+	std::array<int, SDL_NUM_SCANCODES> data;
+	std::array<bool, SDL_NUM_SCANCODES> pressed;
 
-	KeyStates() = default;
+	Keystates() = default;
 
 	// sets the scancode to change and returns the previous value (true if the key is held)
 	bool set(int scancode, bool change);
 };
 
-bool KeyStates::set(int scancode, bool change) {
+bool Keystates::set(int scancode, bool change) {
 	if (scancode >= SDL_NUM_SCANCODES)
 		return false;
 	bool res = pressed[scancode];
@@ -496,12 +496,18 @@ int main(int argc, char **argv) {
 	// that was a lot of OpenGL setup...
 
 	// keybindings; ks.data stores an action associated with the keypress
-	KeyStates ks;
-	ks.data[SDL_SCANCODE_D] = ACT_COLUMN(0);
-	ks.data[SDL_SCANCODE_F] = ACT_COLUMN(1);
-	ks.data[SDL_SCANCODE_J] = ACT_COLUMN(2);
-	ks.data[SDL_SCANCODE_K] = ACT_COLUMN(3);
-	ks.data[SDL_SCANCODE_L] = ACT_COLUMN(4);
+	auto column_bindings = std::to_array<int>({
+		SDL_SCANCODE_D,
+		SDL_SCANCODE_F,
+		SDL_SCANCODE_J,
+		SDL_SCANCODE_K,
+		SDL_SCANCODE_L
+	});
+	Keystates ks;
+	ks.pressed.fill(false); // idk why this doesn't get initialized with the default constructor of ks
+	for (unsigned i = 0; i < column_bindings.size(); i++) {
+		ks.data[column_bindings[i]] = ACT_COLUMN(i);
+	}
 	ks.data[SDL_SCANCODE_SPACE] = ACT_PAUSE;
 
 	// the following 4 variables are times in milliseconds
@@ -521,8 +527,6 @@ int main(int argc, char **argv) {
 		uint64_t start_frame = SDL_GetTicks64();
 		uint64_t song_offset = start_frame - start_chart + audio_offset;
 
-		bool update_last_press = false;
-
 		// oh boy, we're back to 7 levels of indentation!
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
@@ -532,7 +536,7 @@ int main(int argc, char **argv) {
 				// I need a new scope here because C++ throws a fit if you
 				// declare variables after a label without one
 				bool is_held = ks.set(ev.key.keysym.scancode, true);
-				unsigned action = ks.data[ev.key.keysym.scancode];
+				int action = ks.data[ev.key.keysym.scancode];
 				if (action == ACT_NONE)
 					break;
 				if (action > MAX_COLUMN) {
@@ -566,8 +570,7 @@ int main(int argc, char **argv) {
 				int column_index = COLUMN_ACT_INDEX(action);
 				if (chart_paused || column_index >= ch.total_columns())
 					break;
-				ch.last_press[column_index] = song_offset;
-				update_last_press = true;
+				//ch.last_press[column_index] = song_offset;
 				if (is_held) {
 					// eventually, this will have code aside from break; so don't move it
 					//std::cout << "skipping held key\n";
@@ -583,7 +586,11 @@ int main(int argc, char **argv) {
 						std::cout << "perfect ";
 					std::cout << score << '\n';
 					*/
-					found->active = false;
+					if (found->hold_duration > 0) {
+
+					} else {
+						found->active = false;
+					}
 				} else {
 					std::cout << "strike!\n";
 				}
@@ -597,6 +604,14 @@ int main(int argc, char **argv) {
 			}
 		}
 
+		bool update_last_press = false;
+		for (unsigned i = 0; i < column_bindings.size(); i++) {
+			unsigned state = ks.pressed[column_bindings[i]];
+			if (state) {
+				ch.last_press[i] = song_offset;
+				update_last_press = true;
+			}
+		}
 
 		if (chart_paused) {
 			// the framebuffer fbo's texture stores the last frame
