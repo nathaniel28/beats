@@ -504,7 +504,9 @@ int main(int argc, char **argv) {
 		SDL_SCANCODE_L
 	});
 	Keystates ks;
-	ks.pressed.fill(false); // idk why this doesn't get initialized with the default constructor of ks
+	// idk why these arrays aren't initialized by ks's default constructor but they definitely aren't
+	ks.pressed.fill(false);
+	ks.data.fill(ACT_NONE);
 	for (unsigned i = 0; i < column_bindings.size(); i++) {
 		ks.data[column_bindings[i]] = ACT_COLUMN(i);
 	}
