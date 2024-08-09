@@ -1,18 +1,18 @@
 # Beats
 Beats is a rhythm game similar to Rhythm Plus. It's not done yet!
 ## Stuff that still needs to be done
-* get a better library for playing sound
-* Hold notes!
+* proper hold note scoring and note misses
 * A pause menu to change note scroll speed, and audio/note offset, song selection...
-* Charts and the accompanying music are kept in different files; I need a better method of finding the music given a chart as the current solution is just looking for foo given the chart foo.chart
-* Textures for notes
+* Charts and the accompanying music are kept in different files; I need a better method of finding the music given a chart as the current solution is just looking for foo given the chart foo.chart. This will likely mean another update to the .chart file format so it can include a music file to look for.
 * A config file for keybindings etc.
+* Windows release build, when I get around to finishing the majority of this section
+* Textures for notes (but honestly, solid color looks pretty good)
 * Clean up the code! This is difficult because OpenGL is a giant state machine, and doesn't abstract into nice classes very easily. I think helper functions are the way to go, but since they all need to access a million variables, keeping all the mess in one scope is convenient, and I don't see a state struct helping at all.
 ## Stuff that has been done
 * Shaders!
 * Keybindings are modifiable, but the current values are hardcoded
 * Sound
-* The class Chart supports up to 32 columns of notes (though the UI doesn't yet)
+* Up to 8 columns of notes are supported (limited by a shader)
 * The speed at which notes fall can be adjusted (though the value is hardcoded)
 * The audio/note offset can be adjusted (though the value is also hardcoded)
 * Keypresses are scored by how close you got to the next note
