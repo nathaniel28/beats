@@ -90,29 +90,37 @@ void Column::emit_verts(int64_t t0, int64_t t1, int column_height, int note_widt
 }
 
 std::pair<Note *, uint64_t> Column::close_note(uint64_t time, uint64_t threshhold) {
+	uint64_t t_min = time - threshhold;
 	int i = note_index;
+	Note *least = nullptr;
+	while (i >= 0 && notes[i].timestamp >= t_min) {
+		if (notes[i].active)
+			least = &notes[i];
+		i--;
+	}
+	if (least) {
+		uint64_t delta;
+		if (least->timestamp > time)
+			delta = least->timestamp - time;
+		else
+			delta = time - least->timestamp;
+		return {least, delta};
+	}
+	uint64_t t_max = time + threshhold;
 	int max = notes.size();
-	Note *upper = nullptr;
-	uint64_t upper_delta_t = 0;
-	while (i < max && notes[i].timestamp < time + threshhold) {
-		if (notes[i].active) {
-			upper = &notes[i];
-			upper_delta_t = upper->timestamp - time;
-			break;
+	i = note_index;
+	while (i < max && notes[i].timestamp <= t_max) {
+		if (notes[i].timestamp >= t_min && notes[i].active) {
+			uint64_t delta;
+			if (notes[i].timestamp > time)
+				delta = notes[i].timestamp - time;
+			else
+				delta = time - notes[i].timestamp;
+			return {&notes[i], delta};
 		}
 		i++;
 	}
-	i = note_index;
-	while (i > 0 && notes[i].timestamp > time - threshhold) {
-		if (notes[i].active) {
-			uint64_t lower_delta_t = time - notes[i].timestamp;
-			if (!upper || upper_delta_t > lower_delta_t)
-				return {&notes[i], lower_delta_t};
-			break;
-		}
-		i--;
-	}
-	return {upper, upper_delta_t}; // possibly {nullptr, 0}
+	return {nullptr, 0};
 }
 
 #define ACT_NONE 0
@@ -530,7 +538,7 @@ int main(int argc, char **argv) {
 	uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
 	uint64_t display_timespan = 650; // notes at the top of the screen will be display_timespan ms in the future
 	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
-	int64_t audio_offset = -25;
+	int64_t audio_offset = -70;
 
 	SDL_RaiseWindow(win);
 	mp.play();
@@ -583,25 +591,22 @@ int main(int argc, char **argv) {
 				// now we know that action is a column press
 				// for a note; but don't check for gameplay
 				// input when the game is paused!
+				if (is_held)
+					break;
 				int column_index = COLUMN_ACT_INDEX(action);
 				if (chart_paused || column_index >= ch.total_columns())
 					break;
-				//ch.last_press[column_index] = song_offset;
-				if (is_held) {
-					// eventually, this will have code aside from break; so don't move it
-					//std::cout << "skipping held key\n";
-					break;
-				}
 				auto [found, delta] = ch.close_note(column_index, song_offset, strike_timespan);
 				if (found) {
+					uint64_t score = delta;
 					/*
 					uint64_t score = strike_timespan - delta;
 					if (score > strike_timespan)
 						std::cout << "??? ";
 					else if (score > strike_timespan - strike_timespan / 8)
 						std::cout << "perfect ";
-					std::cout << score << '\n';
 					*/
+					std::cout << score << '\n';
 					if (found->hold_duration > 0) {
 
 					} else {
