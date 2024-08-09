@@ -90,7 +90,7 @@ void Column::emit_verts(int64_t t0, int64_t t1, int column_height, int note_widt
 }
 
 std::pair<Note *, uint64_t> Column::close_note(uint64_t time, uint64_t threshhold) {
-	uint64_t t_min = time - threshhold;
+	uint64_t t_min = time > threshhold ? time - threshhold : 0;
 	int i = note_index;
 	Note *least = nullptr;
 	while (i >= 0 && notes[i].timestamp >= t_min) {
