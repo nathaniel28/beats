@@ -65,16 +65,13 @@ void Column::emit_verts(int64_t t0, int64_t t1, int column_height, int note_widt
 	int max = notes.size();
 	while (i < max && static_cast<int64_t>(notes[i].timestamp) < t1) {
 		if (static_cast<int64_t>(notes[i].timestamp + notes[i].hold_duration) < t0) {
-			if (notes[i].active) {
-				//std::cout << "miss!\n";
-			}
 			// we can do this because notes are kept ordered by time
 			note_index = i; // next time, don't bother with notes before this
 		} else if (notes[i].active || notes[i].hold_duration > 0) { // we always draw hold notes
 			const int32_t x0 = note_width * column_offset;
 			const int32_t x1 = x0 + note_width;
 			const int32_t y1 = ((column_height * (static_cast<int64_t>(notes[i].timestamp) - t0)) / (t1 - t0));
-			const int32_t y0 = y1 + note_height + notes[i].hold_duration;
+			const int32_t y0 = y1 + (notes[i].hold_duration ? notes[i].hold_duration : note_height);
 			const uint32_t sz = points.size();
 			indices.emplace(indices.end(), sz + 0);
 			indices.emplace(indices.end(), sz + 1);
@@ -310,7 +307,7 @@ void log_shader_err(GLuint shader) {
 		std::cout << "\n(log truncated)\n";
 }
 
-GLuint load_shader(GLenum type, const GLchar *src, GLint len) {
+GLuint create_shader(GLenum type, const GLchar *src, GLint len) {
 	GLuint shader = glCreateShader(type);
 	if (!shader)
 		return 0;
@@ -329,11 +326,11 @@ GLuint load_shader(GLenum type, const GLchar *src, GLint len) {
 }
 
 GLuint create_program(const std::string_view vtx_src, const std::string_view frag_src) {
-	GLuint vtx_shader = load_shader(GL_VERTEX_SHADER, vtx_src.data(), vtx_src.size());
+	GLuint vtx_shader = create_shader(GL_VERTEX_SHADER, vtx_src.data(), vtx_src.size());
 	if (!vtx_shader)
 		return 0;
 	defer { glDeleteShader(vtx_shader); };
-	GLuint frag_shader = load_shader(GL_FRAGMENT_SHADER, frag_src.data(), frag_src.size());
+	GLuint frag_shader = create_shader(GL_FRAGMENT_SHADER, frag_src.data(), frag_src.size());
 	if (!frag_shader)
 		return 0;
 	defer { glDeleteShader(frag_shader); };
@@ -433,6 +430,8 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 	defer { SDL_GL_DeleteContext(gl_ctx); };
+	//SDL_GL_SetSwapInterval(0); // diable vsync
+	SDL_GL_SetSwapInterval(1); // enable vsync (SDL's default)
 	GLenum gerr = glewInit(); // must be called after SDL_GL_CreateContext
 	if (gerr != GLEW_OK) {
 		std::cout << "failed to initialize GLEW: " << glewGetErrorString(gerr) << '\n';
@@ -635,10 +634,6 @@ int main(int argc, char **argv) {
 					break;
 				auto [found, delta] = ch.close_note(column_index, song_offset + video_offset, strike_timespan);
 				if (found) {
-					//int64_t score = delta;
-					// idk why I need to cast delta, which
-					// is already a int64_t, to ensure a
-					// signed comparison
 					uint64_t note_score = strike_timespan - (delta < 0 ? -delta : delta);
 					/*
 					if (note_score > perfect_threshhold)
@@ -678,8 +673,10 @@ int main(int argc, char **argv) {
 				Note *note = ch.unhold(i);
 				if (note) {
 					int64_t delta = song_offset + video_offset - (note->timestamp + note->hold_duration) + hold_note_unhold_offset;
-					uint64_t note_score = strike_timespan - (delta < 0 ? -delta : delta);
-					score += note_score;
+					if (static_cast<uint64_t>(delta) < strike_timespan) {
+						uint64_t note_score = strike_timespan - (delta < 0 ? -delta : delta);
+						score += note_score;
+					}
 					max_score += strike_timespan;
 					std::cout << "accuracy: " << static_cast<double>(score) / static_cast<double>(max_score) * 100.0 << "%\n";
 				}
@@ -687,6 +684,7 @@ int main(int argc, char **argv) {
 			ch.holding_columns[i] = state;
 		}
 
+		// time to draw stuff
 		if (chart_paused) {
 			// the framebuffer fbo's texture stores the last frame
 			// drawn; we can draw it repeatedly for a still image;
@@ -716,6 +714,7 @@ int main(int argc, char **argv) {
 
 		SDL_GL_SwapWindow(win);
 
+		// if vsync is on, we don't really need to do this
 		uint64_t elapsed = SDL_GetTicks64() - start_frame;
 		if (elapsed < min_delay_per_frame)
 			SDL_Delay(min_delay_per_frame - elapsed);
