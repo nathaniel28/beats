@@ -49,7 +49,7 @@ public:
 
 	void emit_verts(int64_t t0, int64_t t1, int column_height, int note_width, int note_height, int column_offset, std::vector<Point> &points, std::vector<uint32_t> &indices);
 
-	std::pair<Note *, uint64_t> close_note(uint64_t time, uint64_t threshhold);
+	std::pair<Note *, int64_t> close_note(uint64_t time, uint64_t threshhold);
 
 	//void reset();
 };
@@ -89,7 +89,7 @@ void Column::emit_verts(int64_t t0, int64_t t1, int column_height, int note_widt
 	}
 }
 
-std::pair<Note *, uint64_t> Column::close_note(uint64_t time, uint64_t threshhold) {
+std::pair<Note *, int64_t> Column::close_note(uint64_t time, uint64_t threshhold) {
 	uint64_t t_min = time > threshhold ? time - threshhold : 0;
 	int i = note_index;
 	Note *least = nullptr;
@@ -99,24 +99,14 @@ std::pair<Note *, uint64_t> Column::close_note(uint64_t time, uint64_t threshhol
 		i--;
 	}
 	if (least) {
-		uint64_t delta;
-		if (least->timestamp > time)
-			delta = least->timestamp - time;
-		else
-			delta = time - least->timestamp;
-		return {least, delta};
+		return {least, time - least->timestamp};
 	}
 	uint64_t t_max = time + threshhold;
 	int max = notes.size();
 	i = note_index;
 	while (i < max && notes[i].timestamp <= t_max) {
 		if (notes[i].timestamp >= t_min && notes[i].active) {
-			uint64_t delta;
-			if (notes[i].timestamp > time)
-				delta = notes[i].timestamp - time;
-			else
-				delta = time - notes[i].timestamp;
-			return {&notes[i], delta};
+			return {&notes[i], time - notes[i].timestamp};
 		}
 		i++;
 	}
@@ -536,9 +526,18 @@ int main(int argc, char **argv) {
 
 	// the following 4 variables are times in milliseconds
 	uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
+	uint64_t perfect_threshhold = strike_timespan - strike_timespan / 8;
+	uint64_t great_threshhold = strike_timespan - strike_timespan / 5;
+	uint64_t good_threshhold = strike_timespan - strike_timespan / 3;
 	uint64_t display_timespan = 650; // notes at the top of the screen will be display_timespan ms in the future
 	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
-	int64_t audio_offset = -70;
+	int64_t audio_offset = -75; // given the delay of the headphones/speakers and the player's audio reaction time
+	int64_t video_offset = -20; // given the delay of the keyboard and the player's visual reaction time
+	// audio_offset and video_offset are optimal if the mean of all deltas
+	// returned by close_note is 0.
+
+	uint64_t score = 0;
+	uint64_t max_score = 0;
 
 	SDL_RaiseWindow(win);
 	mp.play();
@@ -596,22 +595,32 @@ int main(int argc, char **argv) {
 				int column_index = COLUMN_ACT_INDEX(action);
 				if (chart_paused || column_index >= ch.total_columns())
 					break;
-				auto [found, delta] = ch.close_note(column_index, song_offset, strike_timespan);
+				auto [found, delta] = ch.close_note(column_index, song_offset + video_offset, strike_timespan);
 				if (found) {
-					uint64_t score = delta;
+					//int64_t score = delta;
+					// idk why I need to cast delta, which
+					// is already a int64_t, to ensure a
+					// signed comparison
+					uint64_t note_score = strike_timespan - (static_cast<int64_t>(delta) < 0 ? -delta : delta);
 					/*
-					uint64_t score = strike_timespan - delta;
-					if (score > strike_timespan)
-						std::cout << "??? ";
-					else if (score > strike_timespan - strike_timespan / 8)
+					if (note_score > perfect_threshhold)
 						std::cout << "perfect ";
+					else if (note_score > great_threshhold)
+						std::cout << "great ";
+					else if (note_score > good_threshhold)
+						std::cout << "good ";
+					else
+						std::cout << "okay ";
+					std::cout << note_score << '\n';
 					*/
-					std::cout << score << '\n';
 					if (found->hold_duration > 0) {
 
 					} else {
 						found->active = false;
 					}
+					score += note_score;
+					max_score += strike_timespan;
+					std::cout << "accuracy: " << static_cast<double>(score) / static_cast<double>(max_score) * 100.0 << "%\n";
 				} else {
 					std::cout << "strike!\n";
 				}
