@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <fstream>
 #include <iostream>
-#include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -42,6 +42,7 @@ struct Note {
 class Column {
 public:
 	std::vector<Note> notes;
+	Note *holding_note;
 private:
 	int note_index;
 public:
@@ -55,6 +56,7 @@ public:
 };
 
 Column::Column() : notes(0) {
+	holding_note = nullptr;
 	note_index = 0;
 }
 
@@ -68,7 +70,7 @@ void Column::emit_verts(int64_t t0, int64_t t1, int column_height, int note_widt
 			}
 			// we can do this because notes are kept ordered by time
 			note_index = i; // next time, don't bother with notes before this
-		} else if (notes[i].active) {
+		} else if (notes[i].active || notes[i].hold_duration > 0) { // we always draw hold notes
 			const int32_t x0 = note_width * column_offset;
 			const int32_t x1 = x0 + note_width;
 			const int32_t y1 = ((column_height * (static_cast<int64_t>(notes[i].timestamp) - t0)) / (t1 - t0));
@@ -120,20 +122,13 @@ std::pair<Note *, int64_t> Column::close_note(uint64_t time, uint64_t threshhold
 #define ACT_PAUSE (MAX_COLUMN + 1)
 
 class Chart {
-public:
-	/*
-	enum class ParseErr {
-		None,
-		Magic,
-		Version,
-		General
-	};
-	*/
+	std::vector<Column> columns;
 	std::vector<Point> points; // points of rectangles to draw notes
 	std::vector<uint32_t> indices; // indices for the EBO to help draw points
+public:
 	std::vector<uint32_t> last_press; // last press of a column, millisecond offset from song start, u32 for GLSL
+	std::vector<uint8_t> holding_columns; // columns held last frame; uint8_t instead of bool to avoid weird feature
 private:
-	std::vector<Column> columns;
 	int column_height;
 	int note_width;
 	int note_height;
@@ -161,7 +156,9 @@ public:
 	// between time and that note's timestamp, where column is the offset of
 	// the column to look for notes in, and threshhold is how far in the
 	// past/future to search
-	std::pair<Note *, uint64_t> close_note(int column, uint64_t time, uint64_t threshhold);
+	std::pair<Note *, int64_t> close_note(int column, uint64_t time, uint64_t threshhold);
+
+	Note *unhold(int column);
 
 	int width();
 
@@ -170,7 +167,7 @@ public:
 	int total_columns();
 };
 
-Chart::Chart(uint32_t col_height, uint32_t note_width_, uint32_t note_height_) : points(512), indices(768), last_press(0), columns(0) {
+Chart::Chart(uint32_t col_height, uint32_t note_width_, uint32_t note_height_) : columns(0), points(512), indices(768), last_press(0), holding_columns(0) {
 	column_height = col_height + note_height_;
 	note_width = note_width_;
 	note_height = note_height_;
@@ -209,6 +206,7 @@ int Chart::deserialize(std::istream &is) {
 		}
 		columns.resize(header.column_count);
 		last_press.resize(header.column_count);
+		holding_columns.resize(header.column_count);
 
 		for (uint32_t i = 0; i < header.column_count; i++) {
 			uint32_t column_index;
@@ -256,10 +254,21 @@ void Chart::draw(int64_t t0, int64_t t1, GLuint vao, GLuint vbo, GLuint ebo) {
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Point), 0); // why does GL_FLOAT work but GL_INT doesn't, since I'm giving it ints
 	glEnableVertexAttribArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
 }
 
-std::pair<Note *, uint64_t> Chart::close_note(int column, uint64_t time, uint64_t threshhold) {
-	return columns[column].close_note(time, threshhold);
+std::pair<Note *, int64_t> Chart::close_note(int column, uint64_t time, uint64_t threshhold) {
+	std::pair<Note *, int64_t> res = columns[column].close_note(time, threshhold);
+	Note *note = std::get<0>(res);
+	if (note && note->hold_duration > 0)
+		columns[column].holding_note = note;
+	return res;
+}
+
+Note *Chart::unhold(int column) {
+	Note *res = columns[column].holding_note;
+	columns[column].holding_note = nullptr;
+	return res;
 }
 
 int Chart::width() {
@@ -344,6 +353,36 @@ GLuint create_program(const std::string_view vtx_src, const std::string_view fra
 	return prog;
 }
 
+std::span<const int> bindings_of(int total_columns) {
+	static const int bindings[MAX_COLUMN] = {
+		SDL_SCANCODE_A,
+		SDL_SCANCODE_S,
+		SDL_SCANCODE_D,
+		SDL_SCANCODE_F,
+		SDL_SCANCODE_J,
+		SDL_SCANCODE_K,
+		SDL_SCANCODE_L,
+		SDL_SCANCODE_SEMICOLON
+	};
+	int offset_from;
+	switch (total_columns) {
+	case 4:
+	case 5:
+		offset_from = 2;
+		break;
+	case 6:
+	case 7:
+		offset_from = 1;
+		break;
+	case 8:
+		offset_from = 0;
+		break;
+	default:
+		return std::span<int>();
+	}
+	return std::span(bindings + offset_from, total_columns);
+}
+
 // behold the magnificent 300+ line main function
 int main(int argc, char **argv) {
 	if (argc != 2) {
@@ -366,9 +405,14 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 	in.close();
+	std::span<const int> column_bindings = bindings_of(ch.total_columns());
+	if (column_bindings.size() == 0) {
+		std::cout << "invalid number of columns\n";
+		return -1;
+	}
 
 	// set up SDL with the ability to use OpenGL
-	int err = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
+	int err = SDL_Init(SDL_INIT_VIDEO);
 	if (err != 0) {
 		std::cout << SDL_GetError() << '\n';
 		return -1;
@@ -508,13 +552,6 @@ int main(int argc, char **argv) {
 	// that was a lot of OpenGL setup...
 
 	// keybindings; ks.data stores an action associated with the keypress
-	auto column_bindings = std::to_array<int>({
-		SDL_SCANCODE_D,
-		SDL_SCANCODE_F,
-		SDL_SCANCODE_J,
-		SDL_SCANCODE_K,
-		SDL_SCANCODE_L
-	});
 	Keystates ks;
 	// idk why these arrays aren't initialized by ks's default constructor but they definitely aren't
 	ks.pressed.fill(false);
@@ -526,15 +563,16 @@ int main(int argc, char **argv) {
 
 	// the following 4 variables are times in milliseconds
 	uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
-	uint64_t perfect_threshhold = strike_timespan - strike_timespan / 8;
-	uint64_t great_threshhold = strike_timespan - strike_timespan / 5;
-	uint64_t good_threshhold = strike_timespan - strike_timespan / 3;
+	//uint64_t perfect_threshhold = strike_timespan - strike_timespan / 8;
+	//uint64_t great_threshhold = strike_timespan - strike_timespan / 5;
+	//uint64_t good_threshhold = strike_timespan - strike_timespan / 3;
 	uint64_t display_timespan = 650; // notes at the top of the screen will be display_timespan ms in the future
 	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
 	int64_t audio_offset = -75; // given the delay of the headphones/speakers and the player's audio reaction time
 	int64_t video_offset = -20; // given the delay of the keyboard and the player's visual reaction time
 	// audio_offset and video_offset are optimal if the mean of all deltas
 	// returned by close_note is 0.
+	int64_t hold_note_unhold_offset = -110;
 
 	uint64_t score = 0;
 	uint64_t max_score = 0;
@@ -601,7 +639,7 @@ int main(int argc, char **argv) {
 					// idk why I need to cast delta, which
 					// is already a int64_t, to ensure a
 					// signed comparison
-					uint64_t note_score = strike_timespan - (static_cast<int64_t>(delta) < 0 ? -delta : delta);
+					uint64_t note_score = strike_timespan - (delta < 0 ? -delta : delta);
 					/*
 					if (note_score > perfect_threshhold)
 						std::cout << "perfect ";
@@ -613,11 +651,7 @@ int main(int argc, char **argv) {
 						std::cout << "okay ";
 					std::cout << note_score << '\n';
 					*/
-					if (found->hold_duration > 0) {
-
-					} else {
-						found->active = false;
-					}
+					found->active = false;
 					score += note_score;
 					max_score += strike_timespan;
 					std::cout << "accuracy: " << static_cast<double>(score) / static_cast<double>(max_score) * 100.0 << "%\n";
@@ -635,12 +669,22 @@ int main(int argc, char **argv) {
 		}
 
 		bool update_last_press = false;
-		for (unsigned i = 0; i < column_bindings.size(); i++) {
-			unsigned state = ks.pressed[column_bindings[i]];
+		for (int i = 0; i < ch.total_columns(); i++) {
+			int state = ks.pressed[column_bindings[i]];
 			if (state) {
 				ch.last_press[i] = song_offset;
 				update_last_press = true;
+			} else if (ch.holding_columns[i]) {
+				Note *note = ch.unhold(i);
+				if (note) {
+					int64_t delta = song_offset + video_offset - (note->timestamp + note->hold_duration) + hold_note_unhold_offset;
+					uint64_t note_score = strike_timespan - (delta < 0 ? -delta : delta);
+					score += note_score;
+					max_score += strike_timespan;
+					std::cout << "accuracy: " << static_cast<double>(score) / static_cast<double>(max_score) * 100.0 << "%\n";
+				}
 			}
+			ch.holding_columns[i] = state;
 		}
 
 		if (chart_paused) {
@@ -657,9 +701,8 @@ int main(int argc, char **argv) {
 			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			glClear(GL_COLOR_BUFFER_BIT);
 
-			ch.draw(song_offset, song_offset + display_timespan, note_vao, note_vbo, note_ebo);
 			glUseProgram(note_prog);
-			glDrawElements(GL_TRIANGLES, ch.indices.size(), GL_UNSIGNED_INT, 0);
+			ch.draw(song_offset, song_offset + display_timespan, note_vao, note_vbo, note_ebo);
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glUseProgram(postprocess_prog);
