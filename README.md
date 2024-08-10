@@ -1,5 +1,5 @@
 # Beats
-Beats is a rhythm game similar to Rhythm Plus. It's not done yet!
+Beats is a rhythm game similar to [Rhythm Plus](https://github.com/henryzt/Rhythm-Plus-Music-Game). It's not done yet!
 ## Stuff that still needs to be done
 * proper hold note scoring and note misses
 * A pause menu to change note scroll speed, and audio/note offset, song selection...
