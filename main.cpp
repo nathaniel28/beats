@@ -94,6 +94,9 @@ void Column::emit_verts(int64_t t0, int64_t t1, int column_height, int note_widt
 }
 
 std::pair<Note *, int64_t> Column::close_note(uint64_t time, uint64_t threshhold) {
+	int max = notes.size();
+	if (max == 0)
+		return {nullptr, 0};
 	uint64_t t_min = time > threshhold ? time - threshhold : 0;
 	int i = note_index;
 	Note *least = nullptr;
@@ -106,7 +109,6 @@ std::pair<Note *, int64_t> Column::close_note(uint64_t time, uint64_t threshhold
 		return {least, time - least->timestamp};
 	}
 	uint64_t t_max = time + threshhold;
-	int max = notes.size();
 	i = note_index;
 	while (i < max && notes[i].timestamp <= t_max) {
 		if (notes[i].timestamp >= t_min && notes[i].active) {
