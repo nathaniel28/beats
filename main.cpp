@@ -1,8 +1,10 @@
 // under GPL-2.0
 
 #include <bit>
+#include <chrono>
 #include <cstdint>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <span>
 #include <string_view>
@@ -44,7 +46,7 @@ public:
 	std::vector<Note> notes;
 	Note *holding_note;
 private:
-	int note_index;
+	int note_index, drop_index;
 public:
 	Column();
 
@@ -52,12 +54,15 @@ public:
 
 	std::pair<Note *, int64_t> close_note(uint64_t time, uint64_t threshhold);
 
+	int drop_before(int64_t time);
+
 	//void reset();
 };
 
 Column::Column() : notes(0) {
 	holding_note = nullptr;
 	note_index = 0;
+	drop_index = 0;
 }
 
 void Column::emit_verts(int64_t t0, int64_t t1, int column_height, int note_width, int note_height, int column_offset, std::vector<Point> &points, std::vector<uint32_t> &indices) {
@@ -112,6 +117,18 @@ std::pair<Note *, int64_t> Column::close_note(uint64_t time, uint64_t threshhold
 	return {nullptr, 0};
 }
 
+int Column::drop_before(int64_t time) {
+	int max = notes.size();
+	int dropped = 0;
+	while (drop_index < max && static_cast<int64_t>(notes[drop_index].timestamp) < time) {
+		// it took restraint to avoid dropped += notes[drop_index].active
+		if (notes[drop_index].active)
+			dropped++;
+		drop_index++;
+	}
+	return dropped;
+}
+
 #define ACT_NONE 0
 #define ACT_COLUMN(n) (n + 1)
 #define COLUMN_ACT_INDEX(n) (n - 1)
@@ -157,6 +174,12 @@ public:
 
 	Note *unhold(int column);
 
+	Note *first_note();
+
+	// similar to draw calls,
+	// future calls should be made with a greater time
+	int drop_before(int64_t time);
+
 	int width();
 
 	int height();
@@ -197,8 +220,8 @@ int Chart::deserialize(std::istream &is) {
 			std::cerr << "invalid version " << header.version << '\n';
 			return -1;
 		}
-		if (header.column_count >= MAX_COLUMN) {
-			std::cerr << header.column_count << " is too many columns\n";
+		if (header.column_count >= MAX_COLUMN || header.column_count == 0) {
+			std::cerr << header.column_count << " is a bad number of columns\n";
 			return -1;
 		}
 		columns.resize(header.column_count);
@@ -266,6 +289,26 @@ Note *Chart::unhold(int column) {
 	Note *res = columns[column].holding_note;
 	columns[column].holding_note = nullptr;
 	return res;
+}
+
+Note *Chart::first_note() {
+	Note *first = nullptr;
+	for (Column &col : columns) {
+		if (col.notes.size() == 0)
+			continue;
+		Note *n = &col.notes[0];
+		if (!first || first->timestamp > n->timestamp)
+			first = n;
+	}
+	return first;
+}
+
+int Chart::drop_before(int64_t time) {
+	int dropped = 0;
+	for (Column &col : columns) {
+		dropped += col.drop_before(time);
+	}
+	return dropped;
 }
 
 int Chart::width() {
@@ -560,13 +603,25 @@ int main(int argc, char **argv) {
 	}
 	ks.data[SDL_SCANCODE_SPACE] = ACT_PAUSE;
 
-	// the following 4 variables are times in milliseconds
-	uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future
+	// TODO
+	const uint64_t min_initial_delay = 0;
+	uint64_t initial_delay = 0;
+	Note *first = ch.first_note();
+	if (!first) {
+		std::cout << "that's a strange chart\n";
+		return -1;
+	}
+	uint64_t first_time = first->timestamp;
+	if (first_time < min_initial_delay)
+		initial_delay = min_initial_delay - first_time;
+
+	// the following variables are times in milliseconds
+	uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future or past
 	//uint64_t perfect_threshhold = strike_timespan - strike_timespan / 8;
 	//uint64_t great_threshhold = strike_timespan - strike_timespan / 5;
 	//uint64_t good_threshhold = strike_timespan - strike_timespan / 3;
 	uint64_t display_timespan = 650; // notes at the top of the screen will be display_timespan ms in the future
-	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render
+	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render (if vsync is on, this will not change things unless you want to draw slower than the refresh rate)
 	int64_t audio_offset = -75; // given the delay of the headphones/speakers and the player's audio reaction time
 	int64_t video_offset = -20; // given the delay of the keyboard and the player's visual reaction time
 	// audio_offset and video_offset are optimal if the mean of all deltas
@@ -577,7 +632,20 @@ int main(int argc, char **argv) {
 	uint64_t max_score = 0;
 
 	SDL_RaiseWindow(win);
-	mp.play();
+
+	// TODO
+	if (false && initial_delay) {
+		// VLC::MediaPlayer::play only calls libvlc_media_player_play, which
+		// does not have documentation on its thread safety. So naturally, we
+		// are being irresponsible and assuming it is thread safe. It likely
+		// is, since libVLC is multithreaded under the hood.
+		auto as = std::async(std::launch::async, [&]{
+			std::this_thread::sleep_for(std::chrono::milliseconds(initial_delay));
+			mp.play();
+		});
+	} else {
+		mp.play();
+	}
 
 	bool chart_paused = false;
 	uint64_t pause_frame;
@@ -585,7 +653,9 @@ int main(int argc, char **argv) {
 	// finally, begin event and render loop
 	while (1) {
 		uint64_t start_frame = SDL_GetTicks64();
-		uint64_t song_offset = start_frame - start_chart + audio_offset;
+		int64_t song_offset = start_frame - start_chart + audio_offset;
+
+		bool update_accuracy = false;
 
 		// oh boy, we're back to 7 levels of indentation!
 		SDL_Event ev;
@@ -648,11 +718,11 @@ int main(int argc, char **argv) {
 					*/
 					found->active = false;
 					score += note_score;
-					max_score += strike_timespan;
-					std::cout << "accuracy: " << static_cast<double>(score) / static_cast<double>(max_score) * 100.0 << "%\n";
 				} else {
 					std::cout << "strike!\n";
 				}
+				max_score += strike_timespan;
+				update_accuracy = true;
 				break;
 			}
 			case SDL_KEYUP:
@@ -663,28 +733,6 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		bool update_last_press = false;
-		for (int i = 0; i < ch.total_columns(); i++) {
-			int state = ks.pressed[column_bindings[i]];
-			if (state) {
-				ch.last_press[i] = song_offset;
-				update_last_press = true;
-			} else if (ch.holding_columns[i]) {
-				Note *note = ch.unhold(i);
-				if (note) {
-					int64_t delta = song_offset + video_offset - (note->timestamp + note->hold_duration) + hold_note_unhold_offset;
-					if (static_cast<uint64_t>(delta) < strike_timespan) {
-						uint64_t note_score = strike_timespan - (delta < 0 ? -delta : delta);
-						score += note_score;
-					}
-					max_score += strike_timespan;
-					std::cout << "accuracy: " << static_cast<double>(score) / static_cast<double>(max_score) * 100.0 << "%\n";
-				}
-			}
-			ch.holding_columns[i] = state;
-		}
-
-		// time to draw stuff
 		if (chart_paused) {
 			// the framebuffer fbo's texture stores the last frame
 			// drawn; we can draw it repeatedly for a still image;
@@ -696,6 +744,42 @@ int main(int argc, char **argv) {
 			glBindTexture(GL_TEXTURE_2D, cbuf_tex);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		} else {
+			bool update_last_press = false;
+			for (int i = 0; i < ch.total_columns(); i++) {
+				int state = ks.pressed[column_bindings[i]];
+				if (state) {
+					ch.last_press[i] = song_offset;
+					update_last_press = true;
+				} else if (ch.holding_columns[i]) {
+					Note *note = ch.unhold(i);
+					if (note) {
+						int64_t delta = song_offset + video_offset - (note->timestamp + note->hold_duration) + hold_note_unhold_offset;
+						if (delta < 0)
+							delta = -delta;
+						if (static_cast<uint64_t>(delta) < strike_timespan)
+							score += strike_timespan - delta;
+						max_score += strike_timespan;
+						update_accuracy = true;
+					}
+				}
+				ch.holding_columns[i] = state;
+			}
+
+			// Releasing a hold note outside the strike_timespan does not
+			// drop the note. idk it this is a feature or not.
+			if (static_cast<uint64_t>(song_offset + video_offset) > strike_timespan) {
+				int64_t d_time = song_offset + video_offset - strike_timespan;
+				int dropped = ch.drop_before(d_time);
+				if (dropped) {
+					max_score += strike_timespan * dropped;
+					std::cout << "missed " << dropped << " notes before " << d_time << '\n';
+					update_accuracy = true;
+				}
+			}
+
+			if (update_accuracy)
+				std::cout << "accuracy: " << static_cast<double>(score) / static_cast<double>(max_score) * 100.0 << "%\n";
+
 			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			glClear(GL_COLOR_BUFFER_BIT);
 
