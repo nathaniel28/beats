@@ -73,11 +73,15 @@ void Column::emit_verts(int64_t t0, int64_t t1, int column_height, int note_widt
 			// we can do this because notes are kept ordered by time
 			note_index = i; // next time, don't bother with notes before this
 		} else if (notes[i].active || notes[i].hold_duration > 0) { // we always draw hold notes
-			const int32_t x0 = note_width * column_offset;
-			const int32_t x1 = x0 + note_width;
-			const int32_t y1 = ((column_height * (static_cast<int64_t>(notes[i].timestamp) - t0)) / (t1 - t0));
-			const int32_t y0 = y1 + (notes[i].hold_duration ? notes[i].hold_duration : note_height);
-			const uint32_t sz = points.size();
+			int32_t x0 = note_width * column_offset;
+			int32_t x1 = x0 + note_width;
+			int32_t y1 = (column_height * (static_cast<int64_t>(notes[i].timestamp) - t0)) / (t1 - t0);
+			int32_t y0;
+			if (notes[i].hold_duration)
+				y0 = y1 + (column_height * static_cast<int64_t>(notes[i].hold_duration)) / (t1 - t0);
+			else
+				y0 = y1 + note_height;
+			uint32_t sz = points.size();
 			indices.emplace(indices.end(), sz + 0);
 			indices.emplace(indices.end(), sz + 1);
 			indices.emplace(indices.end(), sz + 2);
@@ -607,7 +611,7 @@ int main(int argc, char **argv) {
 
 	// TODO
 	const uint64_t min_initial_delay = 0;
-	uint64_t initial_delay = 0;
+	int64_t initial_delay = 0;
 	Note *first = ch.first_note();
 	if (!first) {
 		std::cout << "that's a strange chart\n";
@@ -628,7 +632,6 @@ int main(int argc, char **argv) {
 	int64_t video_offset = -20; // given the delay of the keyboard and the player's visual reaction time
 	// audio_offset and video_offset are optimal if the mean of all deltas
 	// returned by close_note is 0.
-	int64_t hold_note_unhold_offset = -110;
 
 	uint64_t score = 0;
 	uint64_t max_score = 0;
@@ -721,7 +724,7 @@ int main(int argc, char **argv) {
 					found->active = false;
 					score += note_score;
 				} else {
-					std::cout << "strike!\n";
+					std::cout << "strike at " << song_offset << "!\n";
 				}
 				max_score += strike_timespan;
 				update_accuracy = true;
@@ -755,7 +758,7 @@ int main(int argc, char **argv) {
 				} else if (ch.holding_columns[i]) {
 					Note *note = ch.unhold(i);
 					if (note) {
-						int64_t delta = song_offset + video_offset - (note->timestamp + note->hold_duration) + hold_note_unhold_offset;
+						int64_t delta = song_offset + video_offset - (note->timestamp + note->hold_duration);
 						if (delta < 0)
 							delta = -delta;
 						if (static_cast<uint64_t>(delta) < strike_timespan)
@@ -780,7 +783,7 @@ int main(int argc, char **argv) {
 			}
 
 			if (update_accuracy)
-				std::cout << "accuracy: " << static_cast<double>(score) / static_cast<double>(max_score) * 100.0 << "%\n";
+				std::cout << "accuracy: " << static_cast<double>(score) / static_cast<double>(max_score) * 100.0 << "% of " << strike_timespan << "ms\n";
 
 			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			glClear(GL_COLOR_BUFFER_BIT);

@@ -1,7 +1,7 @@
 # Beats
-Beats is a rhythm game similar to [Rhythm Plus](https://github.com/henryzt/Rhythm-Plus-Music-Game). It's not done yet!
+Beats is a vertical scrolling rhythm game similar to [Rhythm Plus](https://github.com/henryzt/Rhythm-Plus-Music-Game). It's not done yet!
 ## Stuff that still needs to be done
-* Fix the visual bug involving the ends of hold notes (connecting to the note above?)
+* Adjust and verify scoring notes is done properly.
 * A pause menu to change note scroll speed, and audio/note offset, song selection...
 * Charts and the accompanying music are kept in different files; I need a better method of finding the music given a chart as the current solution is just looking for foo given the chart foo.chart. This will likely mean another update to the .chart file format so it can include a music file to look for.
 * A config file for keybindings etc.
