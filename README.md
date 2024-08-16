@@ -1,5 +1,15 @@
 # Beats
 Beats is a vertical scrolling rhythm game similar to [Rhythm Plus](https://github.com/henryzt/Rhythm-Plus-Music-Game). It's not done yet!
+## Acquiring Charts
+This software does not have the capability to create charts. Instead, you must convert a chart from another rhythm game into the custom .chart format (further documentation by the Chart::deserialize method).
+
+Currently, there is only support (via converter.py) to convert the JSON format used by Rhythm Plus into the .chart format. The import process goes as follows: Download the the chart JSON found via a GET request to https://api.rhythm-plus.com/api/v1/sheet/get?sheetId= [your sheet id here]. Use the network tab of your browser's console to find this request. Select it, then select the "Response" tab, right click the "mapping" section, select "Copy Value", then paste it in a file and save it. Then, run `./converter.py <name-of-input.json> <name-of-output.chart>`, and you'll have a proper .chart file.
+
+Next, you'll need the music for it. If you have the file already, skip the next step.
+
+I do not promote nor condone downloading music unlawfully. On a completely unrelated note, it's pretty easy to download a YouTube video: I recommend using [yt-dlp](https://github.com/yt-dlp/yt-dlp), in which case you would use the command `yt-dlp -x <video URL>` to download the audio only.
+
+As a limitation of my code that will eventually be removed, you must name the music file whatever you named the .chart file, without the .chart part (ie `foo.chart` would have its music in `foo`). This means removing the .mp3/.ogg/whatever file extension the music file had.
 ## Stuff that still needs to be done
 * Adjust and verify scoring notes is done properly.
 * A pause menu to change note scroll speed, and audio/note offset, song selection...
@@ -17,7 +27,6 @@ Beats is a vertical scrolling rhythm game similar to [Rhythm Plus](https://githu
 * The speed at which notes fall can be adjusted (though the value is hardcoded)
 * The audio/note offset can be adjusted (though the value is also hardcoded)
 * Keypresses are scored by how close you got to the next note
-* You can import charts from Rhythm Plus by using converter.py on the chart JSON found via a GET request to https://api.rhythm-plus.com/api/v1/sheet/get?sheetId= [your sheet id here]. Use the network tab of your browser's console to find this request. I might eventually get around to making a tool that does this automatically...
 ## Compiling
 ### On Linux
 For the first time, run `make all`.
