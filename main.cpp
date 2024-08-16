@@ -609,23 +609,9 @@ int main(int argc, char **argv) {
 	}
 	ks.data[SDL_SCANCODE_SPACE] = ACT_PAUSE;
 
-	// TODO
-	const uint64_t min_initial_delay = 0;
-	int64_t initial_delay = 0;
-	Note *first = ch.first_note();
-	if (!first) {
-		std::cout << "that's a strange chart\n";
-		return -1;
-	}
-	uint64_t first_time = first->timestamp;
-	if (first_time < min_initial_delay)
-		initial_delay = min_initial_delay - first_time;
-
 	// the following variables are times in milliseconds
+	uint64_t min_initial_delay = 800; // the least amount of time before you need to hit the first note
 	uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future or past
-	//uint64_t perfect_threshhold = strike_timespan - strike_timespan / 8;
-	//uint64_t great_threshhold = strike_timespan - strike_timespan / 5;
-	//uint64_t good_threshhold = strike_timespan - strike_timespan / 3;
 	uint64_t display_timespan = 650; // notes at the top of the screen will be display_timespan ms in the future
 	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render (if vsync is on, this will not change things unless you want to draw slower than the refresh rate)
 	int64_t audio_offset = -75; // given the delay of the headphones/speakers and the player's audio reaction time
@@ -633,18 +619,34 @@ int main(int argc, char **argv) {
 	// audio_offset and video_offset are optimal if the mean of all deltas
 	// returned by close_note is 0.
 
+
+	int64_t initial_delay = 0;
+	Note *first = ch.first_note();
+	if (!first) {
+		std::cout << "This chart does not have any notes! What?!\n";
+		return -1;
+	}
+	uint64_t first_time = first->timestamp;
+	if (first_time < min_initial_delay) {
+		std::cout << "enforcing minimum delay\n";
+		initial_delay = min_initial_delay - first_time;
+	}
+
 	uint64_t score = 0;
 	uint64_t max_score = 0;
 
 	SDL_RaiseWindow(win);
 
-	// TODO
-	if (false && initial_delay) {
+	// threads are joined during deconstruction,
+	// so as must be part of this scope
+	std::future<void> as;
+	if (initial_delay) {
+		audio_offset -= initial_delay;
 		// VLC::MediaPlayer::play only calls libvlc_media_player_play, which
 		// does not have documentation on its thread safety. So naturally, we
 		// are being irresponsible and assuming it is thread safe. It likely
 		// is, since libVLC is multithreaded under the hood.
-		auto as = std::async(std::launch::async, [&]{
+		as = std::async(std::launch::async, [&]{
 			std::this_thread::sleep_for(std::chrono::milliseconds(initial_delay));
 			mp.play();
 		});
@@ -710,17 +712,6 @@ int main(int argc, char **argv) {
 				auto [found, delta] = ch.close_note(column_index, song_offset + video_offset, strike_timespan);
 				if (found) {
 					uint64_t note_score = strike_timespan - (delta < 0 ? -delta : delta);
-					/*
-					if (note_score > perfect_threshhold)
-						std::cout << "perfect ";
-					else if (note_score > great_threshhold)
-						std::cout << "great ";
-					else if (note_score > good_threshhold)
-						std::cout << "good ";
-					else
-						std::cout << "okay ";
-					std::cout << note_score << '\n';
-					*/
 					found->active = false;
 					score += note_score;
 				} else {
