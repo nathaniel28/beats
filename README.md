@@ -28,15 +28,19 @@ As a limitation of my code that will eventually be removed, you must name the mu
 * The audio/note offset can be adjusted (though the value is also hardcoded)
 * Keypresses are scored by how close you got to the next note
 ## Compiling
-### On Linux
+### For Linux
 For the first time, run `make all`.
 
 Run `make shaders.h` if you update any of shaders/*
 
-You need development libraries for SDL, OpenGL, GLEW, and libVLC (don't forget the C++ bindings).
+You need development libraries for SDL, OpenGL, GLEW, and libVLC (don't forget the C++ bindings by libvlcpp).
 
 You will probably need Dear ImGui in the future.
-### On Windows
-The code should be cross platform. However, I don't know how to build it on Windows, so you're on your own. Good luck!
+### For Windows
+See README-WIN.md
+
+Note that this is instructions on how to compile *for* Windows, not *under* Windows. I don't know how to compile anything under Windows.
+
+The resulting executable and dependencies are ~100 MB (about 64 times larger than the Linux build). This is due mostly to libvlc plugins, so if you have VLC installed already, you can probably do something with the VLC\_PLUGIN\_PATH environment variable to avoid needing the plugins I ship. Alternatively, create a symlink from C:\\Program Files\\VideoLAN\\VLC\\plugins to achieve the same goal.
 ## In defense of the code...
 *This section intentionally left blank.*

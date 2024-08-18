@@ -1,4 +1,4 @@
-CFLAGS=-g -Wall -Wextra -pedantic -std=c++20
+CFLAGS=-g -Wall -Wextra -pedantic -std=c++20 #-O2
 LIBS=-lSDL2 -lGLEW -lGL -lvlc
 CC=g++
 
@@ -17,3 +17,7 @@ all:
 	make clean
 	make shaders.h
 	make beats
+
+windows: main.cpp shaders/sources.h
+	cp -r windepend/lib/* winbuild
+	x86_64-w64-mingw32-g++ -std=c++20 -I./windepend/include -L./windepend/lib -lSDL2 -lglew32 -lopengl32 -llibvlc main.cpp -o winbuild/beats.exe

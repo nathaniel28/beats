@@ -17,6 +17,10 @@
 
 #include "shaders/sources.h"
 
+#ifdef _WIN64
+#include <windows.h>
+#endif
+
 // see https://stackoverflow.com/questions/32432450
 // thank you pmttavara!
 struct defer_dummy {};
@@ -260,6 +264,7 @@ int Chart::deserialize(std::istream &is) {
 			}
 		}
 	} catch (const std::ios_base::failure &err) {
+		std::cerr << err.what() << '\n';
 		return err.code().value();
 	}
 	return 0;
@@ -440,7 +445,7 @@ int main(int argc, char **argv) {
 	}
 
 	std::fstream in;
-	in.open(argv[1]);
+	in.open(argv[1], std::ios_base::in | std::ios_base::binary);
 	if (!in.is_open()) {
 		std::cout << "failed to open chart file\n";
 		return -1;
@@ -801,3 +806,9 @@ int main(int argc, char **argv) {
 	}
 	return 0;
 }
+
+#ifdef _WIN64
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow) {
+	return main(__argc, __argv);
+}
+#endif
