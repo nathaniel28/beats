@@ -15,6 +15,7 @@
 #include <GL/gl.h>
 #include <vlcpp/vlc.hpp>
 
+#include "argparse/argparse.h"
 #include "shaders/sources.h"
 
 #ifdef _WIN64
@@ -434,23 +435,103 @@ std::span<const int> bindings_of(int total_columns) {
 	return std::span(bindings + offset_from, total_columns);
 }
 
+void usage() {
+	std::cout << "Usage: ./beats [OPTION]... <CHART>\n"
+		"Play a .chart file. Options are in milliseconds unless otherwise specified.\n"
+		"  -t, --view-timespan [=650]      How far into the future you should be able to\n"
+		"                                    see. Smaller view timespan equals faster\n"
+		"                                    falling notes. 650 ms is about 4x speed in\n"
+		"                                    Rhythm Plus.\n"
+		"  -a, --audio-offset [=0]         Makes notes fall earlier (if positive) or\n"
+		"                                    later (if negative). Use it to calibrate\n"
+		"                                    delay for bluetooth headphones.\n"
+		"  -v, --video-offset [=0]         Makes you have to hit the note earlier (if\n"
+		"                                    positive) or later (if negative).\n"
+		"  -s, --strike-timespan [=250]    Smaller strike timespan equals easier game.\n"
+		"  -d, --min-initial-delay [=800]  If a song has notes before this timestamp,\n"
+		"                                    delay playback.\n"
+		"  -x [=100]                       Length of each column (total screen length is\n"
+		"                                    4 times this if you have 4 columns).\n"
+		"  -y [=600]                       Height of each column.\n"
+		"      --note-height [=8]          Height of each non hold note\n"
+		"      --no-vsync                  Disable vsync.\n";
+}
+
 // behold the magnificent 300+ line main function
 int main(int argc, char **argv) {
-	if (argc != 2) {
-		const char *name = argv[0]; // the last element of argv is null
-		if (!name)
-			name = "beats";
-		std::cout << "Usage: " << name << " [chart file]\n";
-		return 1;
+	// parsing command line arguments...
+	if (argc <= 1) {
+		usage();
+		return 0;
 	}
+	long display_timespan_opt = 650;
+	long audio_offset_opt = 0;
+	long video_offset_opt = 0;
+	long strike_timespan_opt = 250;
+	long min_initial_delay_opt = 800;
+	long x_opt = 100;
+	long y_opt = 600;
+	long note_height_opt = 8;
+	unsigned char no_vsync_opt = 0;
+	Option opts[] = {
+		OPT('t', "view-timespan", OPT_LONG, &display_timespan_opt),
+		OPT('a', "audio-offset", OPT_LONG, &audio_offset_opt),
+		OPT('v', "video-offset", OPT_LONG, &video_offset_opt),
+		OPT('s', "strike-timespan", OPT_LONG, &strike_timespan_opt),
+		OPT('d', "min-initial-delay", OPT_LONG, &min_initial_delay_opt),
+		OPT('x', nullptr, OPT_LONG, &x_opt),
+		OPT('y', nullptr, OPT_LONG, &y_opt),
+		OPT(0, "note-height", OPT_LONG, &note_height_opt),
+		OPT(0, "no-vsync", OPT_BOOL, &no_vsync_opt),
+	};
+	int extra_args = argparse(argc, argv, opts, sizeof(opts) / sizeof(*opts));
+	bool bad_options = false;
+	if (display_timespan_opt < 50) {
+		std::cout << "View timespan is too short!\n";
+		bad_options = true;
+	}
+	if (strike_timespan_opt < 10) {
+		std::cout << "Strike timespan is too short!\n";
+		bad_options = true;
+	}
+	if (x_opt < 10) {
+		std::cout << "Columns are too thin!\n";
+		bad_options = true;
+	}
+	if (y_opt < 100) {
+		std::cout << "Columns are too short!\n";
+		bad_options = true;
+	}
+	if (note_height_opt < 4) {
+		std::cout << "Notes are too small!\n";
+		bad_options = true;
+	}
+	if (extra_args < 2) {
+		std::cout << "You didn't specify a chart file!\n";
+		bad_options = true;
+	}
+	if (bad_options) {
+		usage();
+		return -1;
+	}
+	char *chart_file = argv[1]; // argparse moves around argv
+	// the following variables are times in milliseconds
+	uint64_t min_initial_delay = min_initial_delay_opt; // the least amount of time before you need to hit the first note
+	uint64_t strike_timespan = strike_timespan_opt; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future or past
+	uint64_t display_timespan = display_timespan_opt; // notes at the top of the screen will be display_timespan ms in the future
+	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render (if vsync is on, this will not change things unless you want to draw slower than the refresh rate)
+	int64_t audio_offset = audio_offset_opt; // given the delay of the headphones/speakers and the player's audio reaction time
+	int64_t video_offset = video_offset_opt; // given the delay of the keyboard and the player's visual reaction time
+	// audio_offset and video_offset are optimal if the mean of all deltas
+	// returned by close_note is 0.
 
 	std::fstream in;
-	in.open(argv[1], std::ios_base::in | std::ios_base::binary);
+	in.open(chart_file, std::ios_base::in | std::ios_base::binary);
 	if (!in.is_open()) {
 		std::cout << "failed to open chart file\n";
 		return -1;
 	}
-	Chart ch(600, 100, 8);
+	Chart ch(y_opt, x_opt, note_height_opt);
 	if (ch.deserialize(in)) {
 		std::cout << "failed to deserialize file\n";
 		return -1;
@@ -492,7 +573,7 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
-	char *c = argv[1];
+	char *c = chart_file;
 	char *last_dot = c;
 	while (*c) {
 		if (*c == '.')
@@ -506,7 +587,7 @@ int main(int argc, char **argv) {
 	// in some VLC clean up functions... Either way, it's not a priority
 	// for me to fix because it only happens on program exit ¯\_(ツ)_/¯
 	VLC::Instance vlci(0, nullptr);
-	VLC::Media media(vlci, argv[1], VLC::Media::FromPath);
+	VLC::Media media(vlci, chart_file, VLC::Media::FromPath);
 	// I've tried Media::state to find out if it couldn't open the file...
 	// but it returns 0 if the file exists or not, so TODO figure out how
 	// to handle errors
@@ -613,17 +694,6 @@ int main(int argc, char **argv) {
 		ks.data[column_bindings[i]] = ACT_COLUMN(i);
 	}
 	ks.data[SDL_SCANCODE_SPACE] = ACT_PAUSE;
-
-	// the following variables are times in milliseconds
-	uint64_t min_initial_delay = 800; // the least amount of time before you need to hit the first note
-	uint64_t strike_timespan = 250; // pressing a key will result in a strike if the next note in the key's column is more than strike_timespan ms in the future or past
-	uint64_t display_timespan = 650; // notes at the top of the screen will be display_timespan ms in the future
-	uint64_t min_delay_per_frame = 5; // wait at least this long between each frame render (if vsync is on, this will not change things unless you want to draw slower than the refresh rate)
-	int64_t audio_offset = -75; // given the delay of the headphones/speakers and the player's audio reaction time
-	int64_t video_offset = -20; // given the delay of the keyboard and the player's visual reaction time
-	// audio_offset and video_offset are optimal if the mean of all deltas
-	// returned by close_note is 0.
-
 
 	int64_t initial_delay = 0;
 	Note *first = ch.first_note();
@@ -809,6 +879,10 @@ int main(int argc, char **argv) {
 
 #ifdef _WIN64
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow) {
+	(void) hInstance;
+	(void) hPrevInstance;
+	(void) pCmdLine;
+	(void) nCmdShow;
 	return main(__argc, __argv);
 }
 #endif

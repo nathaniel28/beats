@@ -253,3 +253,5 @@ For lib/plugin, you can find everything in what VLC ships.
 Create a directory called winbuild. This is where you will find the executable.
 
 After you have everything here, then you can build with `make windows`.
+
+You will need to ship the executable with everything in windepend/lib but opengl32.dll.

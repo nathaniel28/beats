@@ -15,13 +15,13 @@ As a limitation of my code that will eventually be removed, you must name the mu
 * A pause menu to change note scroll speed, and audio/note offset, song selection...
 * Charts and the accompanying music are kept in different files; I need a better method of finding the music given a chart as the current solution is just looking for foo given the chart foo.chart. This will likely mean another update to the .chart file format so it can include a music file to look for.
 * A config file for keybindings etc.
-* Windows release build, when I get around to finishing the majority of this section
 * Textures for notes (but honestly, solid color looks pretty good)
 * Clean up the code! This is difficult because OpenGL is a giant state machine, and doesn't abstract into nice classes very easily. I think helper functions are the way to go, but since they all need to access a million variables, keeping all the mess in one scope is convenient, and I don't see a state struct helping at all.
 * Use less unsigned integers and more signed ones
 ## Stuff that has been done
 * Shaders!
 * Keybindings are modifiable, but the current values are hardcoded
+* Command line arguments, through argparse instead of getopt/getopt\_long/something like normal due to portability concerns.
 * Sound
 * Up to 8 columns of notes are supported (limited by a shader)
 * The speed at which notes fall can be adjusted (though the value is hardcoded)
