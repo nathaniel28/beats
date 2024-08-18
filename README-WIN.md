@@ -2,6 +2,7 @@ I might add these to a repository eventually but I don't want to think about all
 
 Anyway, you will need these files:
 
+```
 windepend
 ├── include
 │   ├── GL
@@ -11,103 +12,103 @@ windepend
 │   │   └── wglew.h
 │   ├── vlc
 │   │   ├── deprecated.h
-│   │   ├── libvlc\_dialog.h
-│   │   ├── libvlc\_events.h
+│   │   ├── libvlc_dialog.h
+│   │   ├── libvlc_events.h
 │   │   ├── libvlc.h
-│   │   ├── libvlc\_media\_discoverer.h
-│   │   ├── libvlc\_media.h
-│   │   ├── libvlc\_media\_library.h
-│   │   ├── libvlc\_media\_list.h
-│   │   ├── libvlc\_media\_list\_player.h
-│   │   ├── libvlc\_media\_player.h
-│   │   ├── libvlc\_renderer\_discoverer.h
-│   │   ├── libvlc\_version.h
-│   │   ├── libvlc\_vlm.h
+│   │   ├── libvlc_media_discoverer.h
+│   │   ├── libvlc_media.h
+│   │   ├── libvlc_media_library.h
+│   │   ├── libvlc_media_list.h
+│   │   ├── libvlc_media_list_player.h
+│   │   ├── libvlc_media_player.h
+│   │   ├── libvlc_renderer_discoverer.h
+│   │   ├── libvlc_version.h
+│   │   ├── libvlc_vlm.h
 │   │   ├── plugins
-│   │   │   ├── vlc\_about.h
-│   │   │   ├── vlc\_access.h
-│   │   │   ├── vlc\_actions.h
-│   │   │   ├── vlc\_addons.h
-│   │   │   ├── vlc\_aout.h
-│   │   │   ├── vlc\_aout\_volume.h
-│   │   │   ├── vlc\_arrays.h
-│   │   │   ├── vlc\_atomic.h
-│   │   │   ├── vlc\_avcodec.h
-│   │   │   ├── vlc\_bits.h
-│   │   │   ├── vlc\_block.h
-│   │   │   ├── vlc\_block\_helper.h
-│   │   │   ├── vlc\_boxes.h
-│   │   │   ├── vlc\_charset.h
-│   │   │   ├── vlc\_codec.h
-│   │   │   ├── vlc\_common.h
-│   │   │   ├── vlc\_config\_cat.h
-│   │   │   ├── vlc\_config.h
-│   │   │   ├── vlc\_configuration.h
-│   │   │   ├── vlc\_cpu.h
-│   │   │   ├── vlc\_demux.h
-│   │   │   ├── vlc\_dialog.h
-│   │   │   ├── vlc\_epg.h
-│   │   │   ├── vlc\_es.h
-│   │   │   ├── vlc\_es\_out.h
-│   │   │   ├── vlc\_events.h
-│   │   │   ├── vlc\_filter.h
-│   │   │   ├── vlc\_fingerprinter.h
-│   │   │   ├── vlc\_fourcc.h
-│   │   │   ├── vlc\_fs.h
-│   │   │   ├── vlc\_gcrypt.h
-│   │   │   ├── vlc\_httpd.h
-│   │   │   ├── vlc\_http.h
-│   │   │   ├── vlc\_image.h
-│   │   │   ├── vlc\_inhibit.h
-│   │   │   ├── vlc\_input.h
-│   │   │   ├── vlc\_input\_item.h
-│   │   │   ├── vlc\_interface.h
-│   │   │   ├── vlc\_interrupt.h
-│   │   │   ├── vlc\_keystore.h
-│   │   │   ├── vlc\_main.h
-│   │   │   ├── vlc\_md5.h
-│   │   │   ├── vlc\_media\_library.h
-│   │   │   ├── vlc\_memstream.h
-│   │   │   ├── vlc\_messages.h
-│   │   │   ├── vlc\_meta\_fetcher.h
-│   │   │   ├── vlc\_meta.h
-│   │   │   ├── vlc\_mime.h
-│   │   │   ├── vlc\_modules.h
-│   │   │   ├── vlc\_mouse.h
-│   │   │   ├── vlc\_mtime.h
-│   │   │   ├── vlc\_network.h
-│   │   │   ├── vlc\_objects.h
-│   │   │   ├── vlc\_opengl.h
-│   │   │   ├── vlc\_picture\_fifo.h
-│   │   │   ├── vlc\_picture.h
-│   │   │   ├── vlc\_picture\_pool.h
-│   │   │   ├── vlc\_playlist.h
-│   │   │   ├── vlc\_plugin.h
-│   │   │   ├── vlc\_probe.h
-│   │   │   ├── vlc\_rand.h
-│   │   │   ├── vlc\_renderer\_discovery.h
-│   │   │   ├── vlc\_services\_discovery.h
-│   │   │   ├── vlc\_sout.h
-│   │   │   ├── vlc\_spu.h
-│   │   │   ├── vlc\_stream\_extractor.h
-│   │   │   ├── vlc\_stream.h
-│   │   │   ├── vlc\_strings.h
-│   │   │   ├── vlc\_subpicture.h
-│   │   │   ├── vlc\_text\_style.h
-│   │   │   ├── vlc\_threads.h
-│   │   │   ├── vlc\_timestamp\_helper.h
-│   │   │   ├── vlc\_tls.h
-│   │   │   ├── vlc\_url.h
-│   │   │   ├── vlc\_variables.h
-│   │   │   ├── vlc\_video\_splitter.h
-│   │   │   ├── vlc\_viewpoint.h
-│   │   │   ├── vlc\_vlm.h
-│   │   │   ├── vlc\_vout\_display.h
-│   │   │   ├── vlc\_vout.h
-│   │   │   ├── vlc\_vout\_osd.h
-│   │   │   ├── vlc\_vout\_window.h
-│   │   │   ├── vlc\_xlib.h
-│   │   │   └── vlc\_xml.h
+│   │   │   ├── vlc_about.h
+│   │   │   ├── vlc_access.h
+│   │   │   ├── vlc_actions.h
+│   │   │   ├── vlc_addons.h
+│   │   │   ├── vlc_aout.h
+│   │   │   ├── vlc_aout_volume.h
+│   │   │   ├── vlc_arrays.h
+│   │   │   ├── vlc_atomic.h
+│   │   │   ├── vlc_avcodec.h
+│   │   │   ├── vlc_bits.h
+│   │   │   ├── vlc_block.h
+│   │   │   ├── vlc_block_helper.h
+│   │   │   ├── vlc_boxes.h
+│   │   │   ├── vlc_charset.h
+│   │   │   ├── vlc_codec.h
+│   │   │   ├── vlc_common.h
+│   │   │   ├── vlc_config_cat.h
+│   │   │   ├── vlc_config.h
+│   │   │   ├── vlc_configuration.h
+│   │   │   ├── vlc_cpu.h
+│   │   │   ├── vlc_demux.h
+│   │   │   ├── vlc_dialog.h
+│   │   │   ├── vlc_epg.h
+│   │   │   ├── vlc_es.h
+│   │   │   ├── vlc_es_out.h
+│   │   │   ├── vlc_events.h
+│   │   │   ├── vlc_filter.h
+│   │   │   ├── vlc_fingerprinter.h
+│   │   │   ├── vlc_fourcc.h
+│   │   │   ├── vlc_fs.h
+│   │   │   ├── vlc_gcrypt.h
+│   │   │   ├── vlc_httpd.h
+│   │   │   ├── vlc_http.h
+│   │   │   ├── vlc_image.h
+│   │   │   ├── vlc_inhibit.h
+│   │   │   ├── vlc_input.h
+│   │   │   ├── vlc_input_item.h
+│   │   │   ├── vlc_interface.h
+│   │   │   ├── vlc_interrupt.h
+│   │   │   ├── vlc_keystore.h
+│   │   │   ├── vlc_main.h
+│   │   │   ├── vlc_md5.h
+│   │   │   ├── vlc_media_library.h
+│   │   │   ├── vlc_memstream.h
+│   │   │   ├── vlc_messages.h
+│   │   │   ├── vlc_meta_fetcher.h
+│   │   │   ├── vlc_meta.h
+│   │   │   ├── vlc_mime.h
+│   │   │   ├── vlc_modules.h
+│   │   │   ├── vlc_mouse.h
+│   │   │   ├── vlc_mtime.h
+│   │   │   ├── vlc_network.h
+│   │   │   ├── vlc_objects.h
+│   │   │   ├── vlc_opengl.h
+│   │   │   ├── vlc_picture_fifo.h
+│   │   │   ├── vlc_picture.h
+│   │   │   ├── vlc_picture_pool.h
+│   │   │   ├── vlc_playlist.h
+│   │   │   ├── vlc_plugin.h
+│   │   │   ├── vlc_probe.h
+│   │   │   ├── vlc_rand.h
+│   │   │   ├── vlc_renderer_discovery.h
+│   │   │   ├── vlc_services_discovery.h
+│   │   │   ├── vlc_sout.h
+│   │   │   ├── vlc_spu.h
+│   │   │   ├── vlc_stream_extractor.h
+│   │   │   ├── vlc_stream.h
+│   │   │   ├── vlc_strings.h
+│   │   │   ├── vlc_subpicture.h
+│   │   │   ├── vlc_text_style.h
+│   │   │   ├── vlc_threads.h
+│   │   │   ├── vlc_timestamp_helper.h
+│   │   │   ├── vlc_tls.h
+│   │   │   ├── vlc_url.h
+│   │   │   ├── vlc_variables.h
+│   │   │   ├── vlc_video_splitter.h
+│   │   │   ├── vlc_viewpoint.h
+│   │   │   ├── vlc_vlm.h
+│   │   │   ├── vlc_vout_display.h
+│   │   │   ├── vlc_vout.h
+│   │   │   ├── vlc_vout_osd.h
+│   │   │   ├── vlc_vout_window.h
+│   │   │   ├── vlc_xlib.h
+│   │   │   └── vlc_xml.h
 │   │   └── vlc.h
 │   └── vlcpp
 │       ├── common.hpp
@@ -128,7 +129,7 @@ windepend
 │       └── vlc.hpp
 ├── lib
 │   ├── glew32.dll
-│   ├── libgcc\_s\_seh-1.dll
+│   ├── libgcc_s_seh-1.dll
 │   ├── libstdc++-6.dll
 │   ├── libvlccore.dll
 │   ├── libvlc.dll
@@ -137,114 +138,115 @@ windepend
 │   └── SDL2.dll
 └── plugins
     ├── access
-    │   ├── libaccess\_concat\_plugin.dll
-    │   ├── libaccess\_imem\_plugin.dll
-    │   ├── libaccess\_mms\_plugin.dll
-    │   ├── libaccess\_realrtsp\_plugin.dll
-    │   ├── libaccess\_srt\_plugin.dll
-    │   ├── libaccess\_wasapi\_plugin.dll
-    │   ├── libattachment\_plugin.dll
+    │   ├── libaccess_concat_plugin.dll
+    │   ├── libaccess_imem_plugin.dll
+    │   ├── libaccess_mms_plugin.dll
+    │   ├── libaccess_realrtsp_plugin.dll
+    │   ├── libaccess_srt_plugin.dll
+    │   ├── libaccess_wasapi_plugin.dll
+    │   ├── libattachment_plugin.dll
     │   ├── libbluray-awt-j2se-1.3.2.jar
     │   ├── libbluray-j2se-1.3.2.jar
-    │   ├── libcdda\_plugin.dll
-    │   ├── libdcp\_plugin.dll
-    │   ├── libdshow\_plugin.dll
-    │   ├── libdtv\_plugin.dll
-    │   ├── libdvdnav\_plugin.dll
-    │   ├── libdvdread\_plugin.dll
-    │   ├── libfilesystem\_plugin.dll
-    │   ├── libftp\_plugin.dll
-    │   ├── libhttp\_plugin.dll
-    │   ├── libhttps\_plugin.dll
-    │   ├── libidummy\_plugin.dll
-    │   ├── libimem\_plugin.dll
-    │   ├── liblibbluray\_plugin.dll
-    │   ├── liblive555\_plugin.dll
-    │   ├── libnfs\_plugin.dll
-    │   ├── librist\_plugin.dll
-    │   ├── librtp\_plugin.dll
-    │   ├── libsatip\_plugin.dll
-    │   ├── libscreen\_plugin.dll
-    │   ├── libsdp\_plugin.dll
-    │   ├── libsftp\_plugin.dll
-    │   ├── libshm\_plugin.dll
-    │   ├── libsmb\_plugin.dll
-    │   ├── libtcp\_plugin.dll
-    │   ├── libtimecode\_plugin.dll
-    │   ├── libudp\_plugin.dll
-    │   ├── libvcd\_plugin.dll
-    │   ├── libvdr\_plugin.dll
-    │   └── libvnc\_plugin.dll
-    ├── audio\_output
-    │   ├── libadummy\_plugin.dll
-    │   ├── libafile\_plugin.dll
-    │   ├── libamem\_plugin.dll
-    │   ├── libdirectsound\_plugin.dll
-    │   ├── libmmdevice\_plugin.dll
-    │   ├── libwasapi\_plugin.dll
-    │   └── libwaveout\_plugin.dll
+    │   ├── libcdda_plugin.dll
+    │   ├── libdcp_plugin.dll
+    │   ├── libdshow_plugin.dll
+    │   ├── libdtv_plugin.dll
+    │   ├── libdvdnav_plugin.dll
+    │   ├── libdvdread_plugin.dll
+    │   ├── libfilesystem_plugin.dll
+    │   ├── libftp_plugin.dll
+    │   ├── libhttp_plugin.dll
+    │   ├── libhttps_plugin.dll
+    │   ├── libidummy_plugin.dll
+    │   ├── libimem_plugin.dll
+    │   ├── liblibbluray_plugin.dll
+    │   ├── liblive555_plugin.dll
+    │   ├── libnfs_plugin.dll
+    │   ├── librist_plugin.dll
+    │   ├── librtp_plugin.dll
+    │   ├── libsatip_plugin.dll
+    │   ├── libscreen_plugin.dll
+    │   ├── libsdp_plugin.dll
+    │   ├── libsftp_plugin.dll
+    │   ├── libshm_plugin.dll
+    │   ├── libsmb_plugin.dll
+    │   ├── libtcp_plugin.dll
+    │   ├── libtimecode_plugin.dll
+    │   ├── libudp_plugin.dll
+    │   ├── libvcd_plugin.dll
+    │   ├── libvdr_plugin.dll
+    │   └── libvnc_plugin.dll
+    ├── audio_output
+    │   ├── libadummy_plugin.dll
+    │   ├── libafile_plugin.dll
+    │   ├── libamem_plugin.dll
+    │   ├── libdirectsound_plugin.dll
+    │   ├── libmmdevice_plugin.dll
+    │   ├── libwasapi_plugin.dll
+    │   └── libwaveout_plugin.dll
     └── codec
-        ├── liba52\_plugin.dll
-        ├── libadpcm\_plugin.dll
-        ├── libaes3\_plugin.dll
-        ├── libaom\_plugin.dll
-        ├── libaraw\_plugin.dll
-        ├── libaribsub\_plugin.dll
-        ├── libavcodec\_plugin.dll
-        ├── libcc\_plugin.dll
-        ├── libcdg\_plugin.dll
-        ├── libcrystalhd\_plugin.dll
-        ├── libcvdsub\_plugin.dll
-        ├── libd3d11va\_plugin.dll
-        ├── libdav1d\_plugin.dll
-        ├── libdca\_plugin.dll
-        ├── libddummy\_plugin.dll
-        ├── libdmo\_plugin.dll
-        ├── libdvbsub\_plugin.dll
-        ├── libdxva2\_plugin.dll
-        ├── libedummy\_plugin.dll
-        ├── libfaad\_plugin.dll
-        ├── libflac\_plugin.dll
-        ├── libfluidsynth\_plugin.dll
-        ├── libg711\_plugin.dll
-        ├── libjpeg\_plugin.dll
-        ├── libkate\_plugin.dll
-        ├── liblibass\_plugin.dll
-        ├── liblibmpeg2\_plugin.dll
-        ├── liblpcm\_plugin.dll
-        ├── libmft\_plugin.dll
-        ├── libmpg123\_plugin.dll
-        ├── liboggspots\_plugin.dll
-        ├── libopus\_plugin.dll
-        ├── libpng\_plugin.dll
-        ├── libqsv\_plugin.dll
-        ├── librawvideo\_plugin.dll
-        ├── librtpvideo\_plugin.dll
-        ├── libschroedinger\_plugin.dll
-        ├── libscte18\_plugin.dll
-        ├── libscte27\_plugin.dll
-        ├── libsdl\_image\_plugin.dll
-        ├── libspdif\_plugin.dll
-        ├── libspeex\_plugin.dll
-        ├── libspudec\_plugin.dll
-        ├── libstl\_plugin.dll
-        ├── libsubsdec\_plugin.dll
-        ├── libsubstx3g\_plugin.dll
-        ├── libsubsusf\_plugin.dll
-        ├── libsvcdsub\_plugin.dll
-        ├── libt140\_plugin.dll
-        ├── libtextst\_plugin.dll
-        ├── libtheora\_plugin.dll
-        ├── libttml\_plugin.dll
-        ├── libtwolame\_plugin.dll
-        ├── libuleaddvaudio\_plugin.dll
-        ├── libvorbis\_plugin.dll
-        ├── libvpx\_plugin.dll
-        ├── libwebvtt\_plugin.dll
-        ├── libx26410b\_plugin.dll
-        ├── libx264\_plugin.dll
-        ├── libx265\_plugin.dll
-        └── libzvbi\_plugin.dll
+        ├── liba52_plugin.dll
+        ├── libadpcm_plugin.dll
+        ├── libaes3_plugin.dll
+        ├── libaom_plugin.dll
+        ├── libaraw_plugin.dll
+        ├── libaribsub_plugin.dll
+        ├── libavcodec_plugin.dll
+        ├── libcc_plugin.dll
+        ├── libcdg_plugin.dll
+        ├── libcrystalhd_plugin.dll
+        ├── libcvdsub_plugin.dll
+        ├── libd3d11va_plugin.dll
+        ├── libdav1d_plugin.dll
+        ├── libdca_plugin.dll
+        ├── libddummy_plugin.dll
+        ├── libdmo_plugin.dll
+        ├── libdvbsub_plugin.dll
+        ├── libdxva2_plugin.dll
+        ├── libedummy_plugin.dll
+        ├── libfaad_plugin.dll
+        ├── libflac_plugin.dll
+        ├── libfluidsynth_plugin.dll
+        ├── libg711_plugin.dll
+        ├── libjpeg_plugin.dll
+        ├── libkate_plugin.dll
+        ├── liblibass_plugin.dll
+        ├── liblibmpeg2_plugin.dll
+        ├── liblpcm_plugin.dll
+        ├── libmft_plugin.dll
+        ├── libmpg123_plugin.dll
+        ├── liboggspots_plugin.dll
+        ├── libopus_plugin.dll
+        ├── libpng_plugin.dll
+        ├── libqsv_plugin.dll
+        ├── librawvideo_plugin.dll
+        ├── librtpvideo_plugin.dll
+        ├── libschroedinger_plugin.dll
+        ├── libscte18_plugin.dll
+        ├── libscte27_plugin.dll
+        ├── libsdl_image_plugin.dll
+        ├── libspdif_plugin.dll
+        ├── libspeex_plugin.dll
+        ├── libspudec_plugin.dll
+        ├── libstl_plugin.dll
+        ├── libsubsdec_plugin.dll
+        ├── libsubstx3g_plugin.dll
+        ├── libsubsusf_plugin.dll
+        ├── libsvcdsub_plugin.dll
+        ├── libt140_plugin.dll
+        ├── libtextst_plugin.dll
+        ├── libtheora_plugin.dll
+        ├── libttml_plugin.dll
+        ├── libtwolame_plugin.dll
+        ├── libuleaddvaudio_plugin.dll
+        ├── libvorbis_plugin.dll
+        ├── libvpx_plugin.dll
+        ├── libwebvtt_plugin.dll
+        ├── libx26410b_plugin.dll
+        ├── libx264_plugin.dll
+        ├── libx265_plugin.dll
+        └── libzvbi_plugin.dll
+```
 
 Everything in windepend/include is regular header stuff.
 
