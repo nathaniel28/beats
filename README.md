@@ -1,5 +1,26 @@
 # Beats
 Beats is a vertical scrolling rhythm game similar to [Rhythm Plus](https://github.com/henryzt/Rhythm-Plus-Music-Game). It's not done yet!
+```
+Usage: ./beats [OPTION]... <CHART>
+Play a .chart file. Options are in milliseconds unless otherwise specified.
+  -t, --view-timespan [=650]      How far into the future you should be able to
+                                    see. Smaller view timespan equals faster
+                                    falling notes. 650 ms is about 4x speed in
+                                    Rhythm Plus.
+  -a, --audio-offset [=0]         Makes notes fall earlier (if positive) or
+                                    later (if negative). Use it to calibrate
+                                    delay for bluetooth headphones.
+  -v, --video-offset [=0]         Makes you have to hit the note earlier (if
+                                    positive) or later (if negative).
+  -s, --strike-timespan [=250]    Smaller strike timespan equals easier game.
+  -d, --min-initial-delay [=800]  If a song has notes before this timestamp,
+                                    delay playback.
+  -x [=100]                       Length of each column (total screen length is
+                                    4 times this if you have 4 columns).
+  -y [=600]                       Height of each column.
+      --note-height [=8]          Height of each non hold note
+      --no-vsync                  Disable vsync.
+```
 ## Acquiring Charts
 This software does not have the capability to create charts. Instead, you must convert a chart from another rhythm game into the custom .chart format (further documentation by the Chart::deserialize method).
 
