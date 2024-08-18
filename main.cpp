@@ -565,8 +565,7 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 	defer { SDL_GL_DeleteContext(gl_ctx); };
-	//SDL_GL_SetSwapInterval(0); // diable vsync
-	SDL_GL_SetSwapInterval(1); // enable vsync (SDL's default)
+	SDL_GL_SetSwapInterval(!no_vsync_opt);
 	GLenum gerr = glewInit(); // must be called after SDL_GL_CreateContext
 	if (gerr != GLEW_OK) {
 		std::cout << "failed to initialize GLEW: " << glewGetErrorString(gerr) << '\n';
