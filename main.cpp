@@ -888,6 +888,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 	(void) hPrevInstance;
 	(void) pCmdLine;
 	(void) nCmdShow;
-	return main(__argc, __argv);
+	int err = main(__argc, __argv);
+	std::cout << "Press Enter to continue...";
+	std::cin.get();
+	return err;
 }
 #endif
