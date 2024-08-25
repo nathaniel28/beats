@@ -380,6 +380,9 @@ GLuint create_shader(GLenum type, const GLchar *src, GLint len) {
 	return shader;
 }
 
+// it's the caller's responsibility to ensure that these string views are null
+// terminated. (string views constructed from string literals are, but a
+// substring view may not be, for example)
 GLuint create_program(const std::string_view vtx_src, const std::string_view frag_src) {
 	GLuint vtx_shader = create_shader(GL_VERTEX_SHADER, vtx_src.data(), vtx_src.size());
 	if (!vtx_shader)
@@ -455,6 +458,7 @@ void usage() {
 		"  -y [=600]                       Height of each column.\n"
 		"      --note-height [=8]          Height of each non hold note\n"
 		"      --no-vsync                  Disable vsync.\n";
+	// in the future, add -m, --music
 }
 
 // behold the magnificent 300+ line main function
@@ -464,6 +468,7 @@ int main(int argc, char **argv) {
 		usage();
 		return 0;
 	}
+	// if you update this, update the README and usage() too
 	long display_timespan_opt = 650;
 	long audio_offset_opt = 0;
 	long video_offset_opt = 0;
@@ -566,6 +571,7 @@ int main(int argc, char **argv) {
 	}
 	defer { SDL_GL_DeleteContext(gl_ctx); };
 	SDL_GL_SetSwapInterval(!no_vsync_opt);
+	glewExperimental = GL_TRUE;
 	GLenum gerr = glewInit(); // must be called after SDL_GL_CreateContext
 	if (gerr != GLEW_OK) {
 		std::cout << "failed to initialize GLEW: " << glewGetErrorString(gerr) << '\n';
@@ -602,7 +608,7 @@ int main(int argc, char **argv) {
 	defer { glDeleteProgram(note_prog); };
 	glUseProgram(note_prog);
 	glUniform2f(0, static_cast<float>(ch.width()), static_cast<float>(ch.height())); // sets uniform "scrSize"
-	glUniform3f(2, 0.486, 0.729, 0.815); // sets uniform "oColor"
+	glUniform3f(1, 0.486, 0.729, 0.815); // sets uniform "color"
 	// The following program makes the columns light up when you press them
 	GLuint postprocess_prog = create_program(highlight_vert_src, highlight_frag_src);
 	if (!postprocess_prog)
@@ -617,7 +623,7 @@ int main(int argc, char **argv) {
 	GLuint vaos[2];
 	glGenVertexArrays(sizeof(vaos) / sizeof(*vaos), vaos);
 	if (glGetError() != GL_NO_ERROR) {
-		std::cout << "failed to vertex array objects\n";
+		std::cout << "failed to generate vertex array objects\n";
 		return -1;
 	}
 	defer { glDeleteVertexArrays(sizeof(vaos) / sizeof(*vaos), vaos); };

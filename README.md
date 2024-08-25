@@ -38,6 +38,7 @@ As a limitation of my code that will eventually be removed, you must name the mu
 * A config file for keybindings etc.
 * Textures for notes (but honestly, solid color looks pretty good)
 * Clean up the code! This is difficult because OpenGL is a giant state machine, and doesn't abstract into nice classes very easily. I think helper functions are the way to go, but since they all need to access a million variables, keeping all the mess in one scope is convenient, and I don't see a state struct helping at all.
+* I still don't really understand GLSL's layout specifier... better look into that!
 * Use less unsigned integers and more signed ones
 ## Stuff that has been done
 * Shaders!
@@ -49,7 +50,7 @@ As a limitation of my code that will eventually be removed, you must name the mu
 * The audio/note offset can be adjusted (though the value is also hardcoded)
 * Keypresses are scored by how close you got to the next note
 ## Compiling
-### For Linux
+### On Linux
 For the first time, run `make all`.
 
 Run `make shaders.h` if you update any of shaders/*
@@ -57,11 +58,17 @@ Run `make shaders.h` if you update any of shaders/*
 You need development libraries for SDL, OpenGL, GLEW, and libVLC (don't forget the C++ bindings by libvlcpp).
 
 You will probably need Dear ImGui in the future.
+### On Windows
+You will need Cygwin, which you can find instructions for [here](https://cygwin.com/install.html). When you install it, select the packages `x86_64-w64-mingw32-g++` and `make` in addition to the ones selected by default.
+
+Then, follow the next section.
 ### For Windows
-See README-WIN.md
+Create the directories `winbuild` and `windepend`.
 
-Note that this is instructions on how to compile *for* Windows, not *under* Windows. I don't know how to compile anything under Windows.
+See README-WIN.md for stuff you need to put in `windepend`.
 
-The resulting executable and dependencies are ~100 MB (about 64 times larger than the Linux build). This is due mostly to libvlc plugins, so if you have VLC installed already, you can probably do something with the VLC\_PLUGIN\_PATH environment variable to avoid needing the plugins I ship. Alternatively, create a symlink from C:\\Program Files\\VideoLAN\\VLC\\plugins to achieve the same goal.
+After that, run `make shaders.h` then `make windows`.
+
+The resulting executable and dependencies you need to ship are significantly larger than the Linux build. This is due mostly to libvlc plugins, so if you have VLC installed already, you can probably do something with the VLC\_PLUGIN\_PATH environment variable to avoid needing the plugins I ship. Alternatively, create a symlink from C:\\Program Files\\VideoLAN\\VLC\\plugins to achieve the same goal (though I have yet to test either of these).
 ## In defense of the code...
 *This section intentionally left blank.*
