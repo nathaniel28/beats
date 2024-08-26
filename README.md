@@ -51,9 +51,7 @@ As a limitation of my code that will eventually be removed, you must name the mu
 * Keypresses are scored by how close you got to the next note
 ## Compiling
 ### On Linux
-For the first time, run `make all`.
-
-Run `make shaders.h` if you update any of shaders/*
+`make`. That's it.
 
 You need development libraries for SDL, OpenGL, GLEW, and libVLC (don't forget the C++ bindings by libvlcpp).
 
@@ -67,7 +65,7 @@ Create the directories `winbuild` and `windepend`.
 
 See README-WIN.md for stuff you need to put in `windepend`.
 
-After that, run `make shaders.h` then `make windows`.
+After that, run `make PLATFORM=windows`.
 
 The resulting executable and dependencies you need to ship are significantly larger than the Linux build. This is due mostly to libvlc plugins, so if you have VLC installed already, you can probably do something with the VLC\_PLUGIN\_PATH environment variable to avoid needing the plugins I ship. Alternatively, create a symlink from C:\\Program Files\\VideoLAN\\VLC\\plugins to achieve the same goal (though I have yet to test either of these).
 ## In defense of the code...

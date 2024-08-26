@@ -1,30 +1,40 @@
 CFLAGS=-g -Wall -Wextra -pedantic -std=c++20 #-O2
 LIBS=-lSDL2 -lGLEW -lGL -lvlc
 CC=g++
+DEST=./beats
 
-beats: main.cpp shaders/sources.h argparse.o
-	$(CC) $(CFLAGS) $(LIBS) argparse.o main.cpp -o beats
+ifeq ($(PLATFORM), windows)
+	CFLAGS+=-I./windepend/include -L./windepend/lib 
+	LIBS=-lSDL2 -lglew32 -lopengl32 -llibvlc
+	CC=x86_64-w64-mingw32-g++
+	DEST=./winbuild/beats.exe
+endif
 
-SHADER_INPUTS=shaders/note.vert shaders/note.frag shaders/highlight.vert shaders/highlight.frag
-shaders.h: $(SHADER_INPUTS)
-	./process_shader.py $(SHADER_INPUTS)
+OBJS=argparse.o chart.o util.o keys.o
+beats: main.cpp shaders/sources.h $(OBJS)
+	$(CC) $(CFLAGS) $(LIBS) $(OBJS) main.cpp -o $(DEST)
+
+SHADERS=shaders/note.vert shaders/note.frag shaders/highlight.vert shaders/highlight.frag
+shaders/sources.h: $(SHADERS)
+	./process_shader.py $(SHADERS)
+
+chart.o: chart.cpp chart.hpp
+	$(CC) $(CFLAGS) -c chart.cpp
+
+util.o: util.cpp util.hpp
+	$(CC) $(CFLAGS) -c util.cpp
+
+keys.o: keys.cpp keys.hpp
+	$(CC) $(CFLAGS) -c keys.cpp
 
 argparse.o: argparse/argparse.c argparse/argparse.h
 	$(CC) $(CFLAGS) -c argparse/argparse.c
 
-argparse.win.o: argparse/argparse.c argparse/argparse.h
-	x86_64-w64-mingw32-g++ $(CFLAGS) -c argparse/argparse.c -o argparse.win.o
-
 clean:
-	rm -f beats
 	rm -f shaders/sources.h
-	rm -rf winbuild/*
 	rm -f *.o
 
 all:
 	make clean
 	make shaders.h
 	make beats
-
-windows: main.cpp shaders/sources.h argparse.win.o
-	x86_64-w64-mingw32-g++ $(CFLAGS) -I./windepend/include -L./windepend/lib -lSDL2 -lglew32 -lopengl32 -llibvlc argparse.win.o main.cpp -o winbuild/beats.exe
